@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Omnilogin Google Search Workflow</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbar" aria-label="Workflow controls">
+        <div class="field keyword-field">
+          <label for="keyword">Tu khoa</label>
+          <input id="keyword" name="keyword" autocomplete="off" />
+        </div>
+
+        <label class="checkbox-field" for="randomKeyword">
+          <input id="randomKeyword" name="randomKeyword" type="checkbox" checked />
+          <span>Random tu file keyderma</span>
+        </label>
+
+        <div class="field profile-field">
+          <label for="profile">Profile Omnilogin</label>
+          <select id="profile" name="profile" multiple size="4">
+            <option value="">Dang tai danh sach profile...</option>
+          </select>
+        </div>
+
+        <div class="field delay-field">
+          <label for="delaySeconds">Nghi giua profile</label>
+          <input id="delaySeconds" name="delaySeconds" type="number" min="0" max="3600" step="1" value="20" />
+        </div>
+
+        <button id="run" type="button">
+          <span class="run-icon" aria-hidden="true">▶</span>
+          Chay
+        </button>
+      </section>
+
+      <section class="status" aria-live="polite">
+        <div id="state" class="state">San sang</div>
+        <div id="meta" class="meta"></div>
+        <pre id="output"></pre>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

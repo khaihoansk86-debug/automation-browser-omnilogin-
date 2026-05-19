@@ -1,0 +1,25 @@
+{
+  "name": "codex",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "run:search": "tsx src/run-search.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@omnilogin/sdk": "^0.1.0",
+    "tsx": "^4.22.2",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@electron/asar": "^4.2.0",
+    "@types/node": "^25.9.0"
+  }
+}

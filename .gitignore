@@ -1,0 +1,16 @@
+node_modules/
+omni-asar/
+
+*.log
+server.out.log
+server.err.log
+
+.env
+.env.*
+
+*.db
+*.sqlite
+*.bak
+*.tmp
+
+dist/*.tsbuildinfo
