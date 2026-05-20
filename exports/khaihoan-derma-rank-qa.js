@@ -159,15 +159,60 @@ async function waitUntilSearchResultsReady() {
     async () => {
       const searchBox = page.locator('textarea[name="q"], input[name="q"]');
       const url = await page.url();
+      const captcha = await getGoogleCaptchaState();
       return {
-        ok: url.includes('/search') && (await isVisibleSafe(searchBox)),
+        ok: (url.includes('/search') && (await isVisibleSafe(searchBox))) || captcha.detected,
         url,
         title: await page.title(),
         searchBoxVisible: await isVisibleSafe(searchBox),
+        captchaDetected: captcha.detected,
+        captchaText: captcha.text,
       };
     },
     45000,
   );
+}
+
+async function getGoogleCaptchaState() {
+  const url = await page.url();
+  const title = await page.title();
+  let text = '';
+  try {
+    text = (await page.locator('body').innerText()).slice(0, 1200);
+  } catch {
+    text = '';
+  }
+
+  const haystack = (url + '\n' + title + '\n' + text).toLowerCase();
+  const detected =
+    url.includes('/sorry/') ||
+    haystack.includes('unusual traffic') ||
+    haystack.includes('automated queries') ||
+    haystack.includes('not a robot') ||
+    haystack.includes('recaptcha') ||
+    haystack.includes('captcha') ||
+    haystack.includes('our systems have detected');
+
+  return {
+    detected,
+    url,
+    title,
+    text,
+  };
+}
+
+async function throwIfGoogleCaptcha(label) {
+  const captcha = await getGoogleCaptchaState();
+  if (!captcha.detected) return;
+
+  const payload = {
+    label: label || 'google',
+    url: captcha.url,
+    title: captcha.title,
+    text: captcha.text.slice(0, 500),
+  };
+  console.log('GOOGLE_CAPTCHA_DETECTED ' + JSON.stringify(payload));
+  throw new Error('GOOGLE_CAPTCHA_DETECTED: Google blocked this profile with CAPTCHA/unusual traffic');
 }
 
 async function searchGoogle(keyword, options = {}) {
@@ -181,12 +226,22 @@ async function searchGoogle(keyword, options = {}) {
   await searchInput.fill(keyword);
   await wait(800 + Math.floor(Math.random() * 900));
   await searchInput.press('Enter');
-  await waitUntilSearchResultsReady();
+  const searchState = await waitUntilSearchResultsReady();
+  if (searchState.captchaDetected) {
+    console.log(
+      'GOOGLE_CAPTCHA_DETECTED ' +
+        JSON.stringify({
+          label: options.label || '[google]',
+          url: searchState.url,
+          title: searchState.title,
+          text: String(searchState.captchaText || '').slice(0, 500),
+        }),
+    );
+    throw new Error('GOOGLE_CAPTCHA_DETECTED: Google blocked this profile with CAPTCHA/unusual traffic');
+  }
 
   const currentUrl = await page.url();
-  if (currentUrl.includes('/sorry/')) {
-    throw new Error('Google returned /sorry captcha page for this profile. Change profile/proxy and retry.');
-  }
+  await throwIfGoogleCaptcha(options.label || '[google]');
 
   if (options.afterResultsMinSeconds || options.afterResultsMaxSeconds) {
     await waitRandomSeconds(

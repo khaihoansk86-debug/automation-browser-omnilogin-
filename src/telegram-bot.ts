@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { OmniLogin } from '@omnilogin/sdk';
 
@@ -31,6 +31,8 @@ type MktProxyConfig = {
   keys: string[];
   rotateMode: 'current' | 'new';
 };
+
+type ProfileWaitResult = 'completed' | 'captcha' | 'stopped';
 
 type RunState = {
   active: boolean;
@@ -128,6 +130,30 @@ function escapeHtml(value: unknown) {
 
 function code(value: unknown) {
   return `<code>${escapeHtml(value)}</code>`;
+}
+
+function getAiAppLogPath(appId: string) {
+  const explicit = process.env.AI_APP_LOG_PATH?.trim();
+  if (explicit) return explicit;
+  const appData = process.env.APPDATA || `${process.env.USERPROFILE}\\AppData\\Roaming`;
+  return `${appData}\\omnilogin\\ai-app\\logs\\${appId}.log`;
+}
+
+function getFileSize(path: string) {
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
+}
+
+function readFileSlice(path: string, start: number) {
+  try {
+    const raw = readFileSync(path, 'utf8');
+    return raw.slice(Math.min(start, raw.length));
+  } catch {
+    return '';
+  }
 }
 
 function loadAppAliases(defaultAppId: string) {
@@ -338,6 +364,43 @@ async function refreshMktProxyForProfile(
   );
 }
 
+async function waitForProfileRunOrCaptcha(
+  telegram: TelegramClient,
+  chatId: number,
+  omni: OmniLogin,
+  app: AppAlias,
+  profileId: number,
+  profileRunSeconds: number,
+  state: RunState,
+  logStartOffset: number,
+): Promise<ProfileWaitResult> {
+  const deadline = Date.now() + Math.max(0, profileRunSeconds) * 1000;
+  const logPath = getAiAppLogPath(app.appId);
+
+  while (Date.now() < deadline) {
+    if (!state.active) return 'stopped';
+
+    const newLog = readFileSlice(logPath, logStartOffset);
+    if (newLog.includes('GOOGLE_CAPTCHA_DETECTED')) {
+      state.lastMessage = `Profile ${profileId} gặp Google CAPTCHA, bỏ qua profile này`;
+      await telegram.sendMessage(
+        chatId,
+        [
+          '<b>Phát hiện Google CAPTCHA</b>',
+          `Profile: ${code(profileId)}`,
+          'Bot sẽ đóng profile này và chuyển sang profile tiếp theo.',
+        ].join('\n'),
+      );
+      await omni.close(profileId).catch(() => undefined);
+      return 'captcha';
+    }
+
+    await delay(Math.min(5000, Math.max(1000, deadline - Date.now())));
+  }
+
+  return state.active ? 'completed' : 'stopped';
+}
+
 class TelegramClient {
   constructor(private readonly token: string) {}
 
@@ -449,6 +512,7 @@ async function runAiAppForProfiles(
       );
 
       await refreshMktProxyForProfile(telegram, chatId, omni, profileId, mktProxyConfig);
+      const aiAppLogOffset = getFileSize(getAiAppLogPath(app.appId));
 
       const result = await omni.aiApps.run(app.appId, {
         profileId,
@@ -489,7 +553,31 @@ async function runAiAppForProfiles(
             `Tự đóng profile sau khi chờ: ${code(closeAfterRun ? 'có' : 'không')}`,
           ].join('\n'),
         );
-        await delay(profileRunSeconds * 1000);
+        const waitResult = await waitForProfileRunOrCaptcha(
+          telegram,
+          chatId,
+          omni,
+          app,
+          profileId,
+          profileRunSeconds,
+          state,
+          aiAppLogOffset,
+        );
+        if (waitResult === 'captcha') {
+          if (index < profiles.length - 1 && delaySeconds > 0) {
+            state.lastMessage = `Nghỉ ${delaySeconds}s sau CAPTCHA trước profile tiếp theo`;
+            await telegram.sendMessage(
+              chatId,
+              [
+                '<b>Tạm nghỉ sau CAPTCHA</b>',
+                `Thời gian nghỉ: ${code(`${delaySeconds} giây`)}`,
+                `Profile tiếp theo: ${code(profiles[index + 1])}`,
+              ].join('\n'),
+            );
+            await delay(delaySeconds * 1000);
+          }
+          continue;
+        }
       }
 
       if (!state.active) break;
