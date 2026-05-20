@@ -24,6 +24,14 @@ type ProfileRef = {
   name: string;
 };
 
+type MktProxyConfig = {
+  enabled: boolean;
+  apiBaseUrl: string;
+  apiKey: string;
+  keys: string[];
+  rotateMode: 'current' | 'new';
+};
+
 type RunState = {
   active: boolean;
   appAlias?: string;
@@ -80,6 +88,13 @@ function parseBoolean(value: string | undefined, fallback: boolean) {
   if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
   return fallback;
+}
+
+function parseCsv(value: string | undefined) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function parseArgs(text: string) {
@@ -211,6 +226,118 @@ async function resolveProfileRefs(omni: OmniLogin, refs: string[], defaultProfil
   };
 }
 
+function loadMktProxyConfig(): MktProxyConfig {
+  const apiKey = process.env.MKT_PROXY_API_KEY?.trim() || '';
+  const keys = parseCsv(process.env.MKT_PROXY_KEYS);
+  return {
+    enabled: parseBoolean(process.env.MKT_PROXY_ENABLED, Boolean(apiKey && keys.length > 0)),
+    apiBaseUrl: process.env.MKT_PROXY_API_BASE_URL?.trim() || 'https://api.mktproxy.com/api',
+    apiKey,
+    keys,
+    rotateMode: process.env.MKT_PROXY_ROTATE_MODE?.trim() === 'new' ? 'new' : 'current',
+  };
+}
+
+function pickMktProxyKey(profile: ProfileRef, config: MktProxyConfig) {
+  if (config.keys.length === 0) return undefined;
+  const profileNumber = Number(profile.name);
+  const index = Number.isInteger(profileNumber) && profileNumber > 0 ? (profileNumber - 1) % config.keys.length : profile.id % config.keys.length;
+  return config.keys[index];
+}
+
+async function fetchMktProxy(config: MktProxyConfig, key: string, preferNew: boolean) {
+  const endpoint = preferNew ? 'new' : 'current';
+  const url = `${config.apiBaseUrl.replace(/\/$/, '')}/proxies/${endpoint}?key=${encodeURIComponent(key)}`;
+  const response = await fetch(url, {
+    headers: {
+      'X-API-Key': config.apiKey,
+    },
+  });
+  const payload = (await response.json()) as {
+    success?: boolean;
+    data?: {
+      ip?: string;
+      port?: string | number;
+      username?: string;
+      user?: string;
+      password?: string;
+      pass?: string;
+      protocol?: string;
+    };
+    message?: string;
+  };
+
+  if (!response.ok || !payload.success || !payload.data) {
+    throw new Error(payload.message || `MKTProxy API failed: ${response.status}`);
+  }
+
+  const data = payload.data;
+  const host = String(data.ip || '').trim();
+  const port = Number(data.port);
+  const username = String(data.username || data.user || '').trim();
+  const password = String(data.password || data.pass || '').trim();
+  if (!host || !Number.isInteger(port) || port <= 0 || !username || !password) {
+    throw new Error('MKTProxy returned incomplete proxy data');
+  }
+
+  return {
+    proxy_type: String(data.protocol || 'http').toLowerCase() === 'socks5' ? 'Socks5' : 'HTTP',
+    host,
+    port,
+    user_name: username,
+    password,
+  } as const;
+}
+
+async function refreshMktProxyForProfile(
+  telegram: TelegramClient,
+  chatId: number,
+  omni: OmniLogin,
+  profileId: number,
+  config: MktProxyConfig,
+) {
+  if (!config.enabled) return;
+  if (!config.apiKey || config.keys.length === 0) {
+    throw new Error('MKTProxy chưa cấu hình MKT_PROXY_API_KEY hoặc MKT_PROXY_KEYS');
+  }
+
+  const profiles = await loadProfilesByNameOrId(omni);
+  const profile = profiles.find((item) => item.id === profileId);
+  if (!profile) throw new Error(`Không tìm thấy profile ID ${profileId} để cập nhật proxy`);
+
+  const key = pickMktProxyKey(profile, config);
+  if (!key) throw new Error(`Không chọn được MKTProxy key cho profile ${profile.name || profileId}`);
+
+  const proxyData = await fetchMktProxy(config, key, config.rotateMode === 'new');
+  const detail = await omni.profiles.get(profileId);
+  const currentProxy = (detail as { proxy?: { id?: number; name?: string } }).proxy;
+  const proxyName = currentProxy?.name || `MKTProxy-${key.slice(-4)}`;
+
+  if (currentProxy?.id) {
+    await omni.proxies.update(currentProxy.id, {
+      name: proxyName,
+      ...proxyData,
+    });
+  } else {
+    const created = await omni.proxies.create({
+      name: proxyName,
+      ...proxyData,
+    });
+    await omni.profiles.assignProxy(created.id, [profileId]);
+  }
+
+  await telegram.sendMessage(
+    chatId,
+    [
+      '<b>Đã cập nhật proxy MKTProxy</b>',
+      `Profile: ${code(profile.name || profileId)}`,
+      `Key: ${code('...' + key.slice(-4))}`,
+      `Proxy: ${code(`${proxyData.host}:${proxyData.port}`)}`,
+      `Chế độ: ${code(config.rotateMode)}`,
+    ].join('\n'),
+  );
+}
+
 class TelegramClient {
   constructor(private readonly token: string) {}
 
@@ -292,6 +419,7 @@ async function runAiAppForProfiles(
   delaySeconds: number,
   profileRunSeconds: number,
   closeAfterRun: boolean,
+  mktProxyConfig: MktProxyConfig,
   state: RunState,
 ) {
   state.active = true;
@@ -319,6 +447,8 @@ async function runAiAppForProfiles(
           `Thứ tự: ${code(`${index + 1}/${profiles.length}`)}`,
         ].join('\n'),
       );
+
+      await refreshMktProxyForProfile(telegram, chatId, omni, profileId, mktProxyConfig);
 
       const result = await omni.aiApps.run(app.appId, {
         profileId,
@@ -445,6 +575,7 @@ async function main() {
   const defaultDelaySeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_DELAY_SECONDS, 60) || 60;
   const defaultProfileRunSeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_RUN_SECONDS, 180) || 180;
   const defaultCloseAfterRun = parseBoolean(process.env.CLOSE_PROFILE_AFTER_RUN, true);
+  const mktProxyConfig = loadMktProxyConfig();
   const omniHost = process.env.OMNILOGIN_HOST?.trim() || 'http://localhost:35353';
 
   const telegram = new TelegramClient(token);
@@ -460,6 +591,7 @@ async function main() {
         '<b>Bot đã sẵn sàng</b>',
         `Workflow mặc định: ${code(defaultAppId)}`,
         `Omnilogin: ${code(omniHost)}`,
+        `MKTProxy: ${code(mktProxyConfig.enabled ? 'bật' : 'tắt')}`,
         '',
         `Gõ ${code('/help')} để xem lệnh hỗ trợ.`,
       ].join('\n'),
@@ -600,6 +732,7 @@ async function main() {
             delaySeconds,
             profileRunSeconds,
             closeAfterRun,
+            mktProxyConfig,
             state,
           );
           continue;
