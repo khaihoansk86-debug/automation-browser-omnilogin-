@@ -61,18 +61,22 @@ async function moveMouseNaturally() {
   await page.mouse.move(x, y, { steps: 8 + Math.floor(Math.random() * 18) });
 }
 
-async function scanGoogleResultsNaturally(label) {
+async function scanGoogleResultsNaturally(label, options = {}) {
   console.log((label || '[google]') + ' scan results');
-  const downSteps = 2 + Math.floor(Math.random() * 3);
+  const downSteps = Number.isInteger(options.downSteps)
+    ? options.downSteps
+    : 2 + Math.floor(Math.random() * 3);
   for (let index = 0; index < downSteps; index++) {
     if (Math.random() < 0.7) await moveMouseNaturally();
     await page.mouse.wheel(0, 360 + Math.floor(Math.random() * 520));
     await wait(900 + Math.floor(Math.random() * 1400));
   }
 
-  await wait(1200 + Math.floor(Math.random() * 2200));
+  await wait(Number.isInteger(options.middleWaitMs) ? options.middleWaitMs : 1200 + Math.floor(Math.random() * 2200));
 
-  const upSteps = 1 + Math.floor(Math.random() * 3);
+  const upSteps = Number.isInteger(options.upSteps)
+    ? options.upSteps
+    : 1 + Math.floor(Math.random() * 3);
   for (let index = 0; index < upSteps; index++) {
     if (Math.random() < 0.7) await moveMouseNaturally();
     await page.mouse.wheel(0, -(220 + Math.floor(Math.random() * 420)));
@@ -251,7 +255,9 @@ async function searchGoogle(keyword, options = {}) {
     );
   }
 
-  await scanGoogleResultsNaturally(options.label || '[google]');
+  if (!options.skipScan) {
+    await scanGoogleResultsNaturally(options.label || '[google]', options.scanOptions || {});
+  }
 }
 
 async function extractGoogleResults() {
@@ -301,6 +307,52 @@ async function extractGoogleResults() {
     url: result.url,
     host: result.host,
   }));
+}
+
+function mergeResults(existing, nextResults) {
+  const byUrl = new Map();
+  for (const item of existing.concat(nextResults)) {
+    const key = cleanUrl(item.url);
+    if (!byUrl.has(key)) byUrl.set(key, item);
+  }
+  return Array.from(byUrl.values()).map((item, index) => ({
+    ...item,
+    position: index + 1,
+  }));
+}
+
+async function findTargetResultWithScrolling(targetDomain) {
+  let collected = [];
+  for (let attempt = 0; attempt < 7; attempt++) {
+    const currentResults = await extractGoogleResults();
+    collected = mergeResults(collected, currentResults);
+    const targetResult = collected.find((result) => isTargetHost(result.host, targetDomain));
+    if (targetResult) {
+      console.log(
+        '[derma] target found during scan: ' +
+          JSON.stringify({
+            attempt,
+            rank: targetResult.position,
+            url: cleanUrl(targetResult.url),
+          }),
+      );
+      return {
+        targetResult,
+        topResults: collected,
+      };
+    }
+
+    if (attempt < 6) {
+      if (Math.random() < 0.7) await moveMouseNaturally();
+      await page.mouse.wheel(0, 650 + Math.floor(Math.random() * 450));
+      await wait(850 + Math.floor(Math.random() * 900));
+    }
+  }
+
+  return {
+    targetResult: null,
+    topResults: collected,
+  };
 }
 
 async function extractInternalLinks(targetDomain) {
@@ -503,6 +555,11 @@ async function warmupNewsRead(config) {
       label: '[news] after search',
       afterResultsMinSeconds: 2,
       afterResultsMaxSeconds: 5,
+      scanOptions: {
+        downSteps: 1,
+        middleWaitMs: 700,
+        upSteps: 0,
+      },
     });
     const topResults = await extractGoogleResults();
     const openResult = await openRandomReadableNewsResult(topResults, config);
@@ -627,11 +684,13 @@ async function main() {
   const keyword = await getKeyword(config);
   await searchGoogle(keyword, {
     label: '[derma] after search',
-    afterResultsMinSeconds: 5,
-    afterResultsMaxSeconds: 12,
+    afterResultsMinSeconds: 1,
+    afterResultsMaxSeconds: 2,
+    skipScan: true,
   });
-  const topResults = await extractGoogleResults();
-  const targetResult = topResults.find((result) => isTargetHost(result.host, config.targetDomain));
+  const targetScan = await findTargetResultWithScrolling(config.targetDomain);
+  const topResults = targetScan.topResults;
+  const targetResult = targetScan.targetResult;
   const targetStartUrl = targetResult ? cleanUrl(targetResult.url) : cleanUrl(config.targetBaseUrl);
   console.log(
     '[derma] open target directly: ' +
