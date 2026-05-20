@@ -546,6 +546,105 @@ async function openRandomReadableNewsResult(topResults, config) {
   };
 }
 
+function fallbackNewsCandidates(keyword) {
+  const normalized = String(keyword || '').toLowerCase();
+  const all = [
+    {
+      title: 'VnExpress',
+      host: 'vnexpress.net',
+      url: 'https://vnexpress.net/',
+    },
+    {
+      title: 'VietnamNet',
+      host: 'vietnamnet.vn',
+      url: 'https://vietnamnet.vn/',
+    },
+    {
+      title: 'Tuổi Trẻ Online',
+      host: 'tuoitre.vn',
+      url: 'https://tuoitre.vn/',
+    },
+    {
+      title: 'Dân Trí',
+      host: 'dantri.com.vn',
+      url: 'https://dantri.com.vn/',
+    },
+    {
+      title: 'Thanh Niên',
+      host: 'thanhnien.vn',
+      url: 'https://thanhnien.vn/',
+    },
+    {
+      title: 'Người Lao Động',
+      host: 'nld.com.vn',
+      url: 'https://nld.com.vn/',
+    },
+    {
+      title: 'CafeF',
+      host: 'cafef.vn',
+      url: 'https://cafef.vn/',
+    },
+    {
+      title: 'Báo Mới',
+      host: 'baomoi.com',
+      url: 'https://baomoi.com/',
+    },
+  ];
+
+  if (normalized.includes('kinh') || normalized.includes('tài chính') || normalized.includes('chứng khoán')) {
+    return shuffleArray([
+      all.find((item) => item.host === 'cafef.vn'),
+      all.find((item) => item.host === 'vietnamnet.vn'),
+      all.find((item) => item.host === 'vnexpress.net'),
+      all.find((item) => item.host === 'tuoitre.vn'),
+    ].filter(Boolean));
+  }
+
+  return shuffleArray(all);
+}
+
+async function forceOpenFallbackNews(keyword, existingAttempts) {
+  const attempts = existingAttempts.slice();
+  const candidates = fallbackNewsCandidates(keyword).slice(0, 4);
+  for (const result of candidates) {
+    const url = cleanUrl(result.url);
+    attempts.push({
+      title: result.title,
+      host: result.host,
+      url,
+      fallback: true,
+    });
+
+    try {
+      console.log('[news] force open fallback news directly: ' + url);
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 22000 });
+      await wait(1500 + Math.floor(Math.random() * 1300));
+      const currentUrl = await page.url();
+      const bodyText = await page.locator('body').innerText().catch(() => '');
+      const stillGoogle = normalizeHost(new URL(currentUrl).hostname).includes('google.');
+      if (!stillGoogle && bodyText.trim().length > 250) {
+        return {
+          result,
+          attempts,
+          currentUrl,
+          currentTitle: await page.title(),
+        };
+      }
+      attempts[attempts.length - 1].skippedReason = 'Fallback page was not readable';
+    } catch (error) {
+      attempts[attempts.length - 1].skippedReason = error.message || String(error);
+      console.log('[news] fallback failed:', error.message || String(error));
+    }
+  }
+
+  return {
+    result: null,
+    attempts,
+    currentUrl: await page.url(),
+    currentTitle: await page.title(),
+  };
+}
+
 async function warmupNewsRead(config) {
   console.log('[news] start ' + new Date().toISOString());
   const keyword = await getNewsKeyword(config);
@@ -562,14 +661,18 @@ async function warmupNewsRead(config) {
       },
     });
     const topResults = await extractGoogleResults();
-    const openResult = await openRandomReadableNewsResult(topResults, config);
+    let openResult = await openRandomReadableNewsResult(topResults, config);
+    if (!openResult.result) {
+      console.log('[news] google candidates failed, forcing fallback news open');
+      openResult = await forceOpenFallbackNews(keyword, openResult.attempts);
+    }
     const newsResult = openResult.result;
 
     if (!newsResult) {
       return {
         keyword,
         skipped: true,
-        reason: 'No readable non-target news/search result could be opened',
+        reason: 'No readable news URL could be opened even after fallback',
         topResults,
         openAttempts: openResult.attempts,
       };
