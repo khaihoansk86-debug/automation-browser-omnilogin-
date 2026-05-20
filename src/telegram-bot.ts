@@ -19,6 +19,11 @@ type AppAlias = {
   name: string;
 };
 
+type ProfileRef = {
+  id: number;
+  name: string;
+};
+
 type RunState = {
   active: boolean;
   appAlias?: string;
@@ -88,14 +93,14 @@ function parseArgs(text: string) {
   return args;
 }
 
-function parseProfiles(args: Record<string, string>) {
+function parseProfileRefs(args: Record<string, string>) {
   const raw = args.profiles || args.profile;
   if (!raw) return [];
 
   return raw
     .split(',')
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isInteger(item) && item > 0);
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function escapeHtml(value: unknown) {
@@ -153,6 +158,59 @@ function resolveApp(args: Record<string, string>, aliases: AppAlias[], defaultAp
   };
 }
 
+async function loadProfilesByNameOrId(omni: OmniLogin) {
+  const profiles: ProfileRef[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const result = await omni.profiles.list({
+      page,
+      pageSize: 100,
+      sort: 'date_created',
+      sortType: 'asc',
+    });
+    const docs = (result.docs || []) as Array<{ id?: number; name?: string }>;
+    profiles.push(
+      ...docs
+        .filter((item) => Number.isInteger(item.id))
+        .map((item) => ({
+          id: Number(item.id),
+          name: String(item.name || ''),
+        })),
+    );
+    if (docs.length < 100) break;
+  }
+  return profiles;
+}
+
+async function resolveProfileRefs(omni: OmniLogin, refs: string[], defaultProfileRef: string) {
+  const requested = refs.length > 0 ? refs : [defaultProfileRef];
+  const profiles = await loadProfilesByNameOrId(omni);
+  const resolved: number[] = [];
+  const unresolved: string[] = [];
+
+  for (const ref of requested) {
+    const byName = profiles.find((profile) => profile.name === ref);
+    if (byName) {
+      resolved.push(byName.id);
+      continue;
+    }
+
+    const id = Number(ref);
+    if (Number.isInteger(id) && id > 0 && profiles.some((profile) => profile.id === id)) {
+      resolved.push(id);
+      continue;
+    }
+
+    unresolved.push(ref);
+  }
+
+  return {
+    requested,
+    resolved: [...new Set(resolved)],
+    unresolved,
+    profiles,
+  };
+}
+
 class TelegramClient {
   constructor(private readonly token: string) {}
 
@@ -195,9 +253,9 @@ function helpText(defaultAppId: string) {
     '',
     '<b>Lệnh hỗ trợ</b>',
     `${code('/list')} - xem danh sách workflow/AI App`,
-    `${code('/run profile=1')} - chạy workflow mặc định`,
+    `${code('/run profile=1')} - chạy workflow mặc định theo tên profile hoặc ID`,
     `${code('/run app=derma profile=1')} - chạy workflow theo alias`,
-    `${code('/run app=derma profiles=1,2 delay=60')} - chạy nhiều profile, nghỉ giữa mỗi profile`,
+    `${code('/run app=derma profiles=1,2 delay=60')} - chạy nhiều profile theo tên hoặc ID, nghỉ giữa mỗi profile`,
     `${code('/run app=derma profiles=1,2 wait=180 delay=60 close=1')} - chờ mỗi profile chạy xong rồi chuyển profile`,
     `${code('/status')} - xem trạng thái hiện tại`,
     `${code('/stop')} - dừng workflow mặc định`,
@@ -383,7 +441,7 @@ async function main() {
   const allowedChatId = Number(requiredEnv('TELEGRAM_ALLOWED_CHAT_ID'));
   const defaultAppId = process.env.AI_APP_ID?.trim() || DEFAULT_APP_ID;
   const aliases = loadAppAliases(defaultAppId);
-  const defaultProfileId = parsePositiveInt(process.env.DEFAULT_PROFILE_ID, 1) || 1;
+  const defaultProfileRef = process.env.DEFAULT_PROFILE_ID?.trim() || '1';
   const defaultDelaySeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_DELAY_SECONDS, 60) || 60;
   const defaultProfileRunSeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_RUN_SECONDS, 180) || 180;
   const defaultCloseAfterRun = parseBoolean(process.env.CLOSE_PROFILE_AFTER_RUN, true);
@@ -501,8 +559,23 @@ async function main() {
 
           const args = parseArgs(text);
           const app = resolveApp(args, aliases, defaultAppId);
-          const profiles = parseProfiles(args);
-          if (profiles.length === 0) profiles.push(defaultProfileId);
+          const profileRefs = parseProfileRefs(args);
+          const profileResolve = await resolveProfileRefs(omni, profileRefs, defaultProfileRef);
+          if (profileResolve.unresolved.length > 0 || profileResolve.resolved.length === 0) {
+            await telegram.sendMessage(
+              chatId,
+              [
+                '<b>Không tìm thấy profile</b>',
+                `Bạn nhập: ${code(profileResolve.requested.join(', '))}`,
+                `Không tìm thấy: ${code(profileResolve.unresolved.join(', ') || 'tất cả')}`,
+                '',
+                '<b>Profile hiện có</b>',
+                code(profileResolve.profiles.map((profile) => `${profile.name}=ID ${profile.id}`).join(', ')),
+              ].join('\n'),
+            );
+            continue;
+          }
+          const profiles = profileResolve.resolved;
 
           const delaySeconds = parsePositiveInt(args.delay, defaultDelaySeconds) || defaultDelaySeconds;
           const profileRunSeconds =
@@ -510,6 +583,14 @@ async function main() {
             defaultProfileRunSeconds;
           const closeAfterRun = parseBoolean(args.close || args.closeprofile, defaultCloseAfterRun);
           state.command = text;
+          await telegram.sendMessage(
+            chatId,
+            [
+              '<b>Đã map profile</b>',
+              `Bạn nhập: ${code(profileResolve.requested.join(', '))}`,
+              `ID sẽ chạy: ${code(profiles.join(', '))}`,
+            ].join('\n'),
+          );
           void runAiAppForProfiles(
             telegram,
             chatId,
