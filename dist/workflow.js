@@ -76,6 +76,24 @@ function isTargetHost(host) {
     const normalizedTarget = normalizeHost(appConfig.targetDomain);
     return normalizedHost === normalizedTarget || normalizedHost.endsWith(`.${normalizedTarget}`);
 }
+function decodeGoogleHref(rawHref) {
+    try {
+        const parsed = new URL(rawHref, 'https://www.google.com/');
+        const host = normalizeHost(parsed.hostname);
+        if (host === 'google.com' || host.endsWith('.google.com')) {
+            const wrappedUrl = parsed.searchParams.get('q') ||
+                parsed.searchParams.get('url') ||
+                parsed.searchParams.get('adurl');
+            if (wrappedUrl?.startsWith('http')) {
+                return wrappedUrl;
+            }
+        }
+        return parsed.href;
+    }
+    catch {
+        return rawHref;
+    }
+}
 async function step1_openGoogle(page) {
     console.log(`[step1] start ${new Date().toISOString()}`);
     await page.goto('https://www.google.com/', { waitUntil: 'domcontentloaded', timeout: 45_000 });
@@ -95,8 +113,7 @@ async function step2_searchKeyword(page, keyword) {
 async function step3_extractGoogleResults(page) {
     console.log(`[step3] start ${new Date().toISOString()}`);
     await waitUntilSearchResultsReady(page);
-    const results = (await page.locator('a').evaluateAll(() => {
-        const seen = new Set();
+    const rawResults = (await page.locator('a').evaluateAll(() => {
         const blockedHosts = [
             'google.',
             'gstatic.',
@@ -113,27 +130,79 @@ async function step3_extractGoogleResults(page) {
                 '';
             return {
                 title: title.replace(/\s+/g, ' ').slice(0, 180),
+                clickUrl: url.href,
                 url: url.href,
                 host: url.hostname,
             };
         })
             .filter((item) => item.title && item.url.startsWith('http'))
-            .filter((item) => !blockedHosts.some((host) => item.host.includes(host)))
             .filter((item) => {
-            const key = item.url.replace(/[#?].*$/, '');
-            if (seen.has(key))
-                return false;
-            seen.add(key);
-            return true;
+            if (!blockedHosts.some((host) => item.host.includes(host)))
+                return true;
+            return item.host.includes('google.') && new URL(item.url).searchParams.has('q');
         })
             .slice(0, 20);
     }));
+    const seen = new Set();
+    const results = rawResults
+        .map((result) => {
+        const decodedUrl = decodeGoogleHref(result.clickUrl || result.url);
+        const parsed = new URL(decodedUrl);
+        return {
+            ...result,
+            url: parsed.href,
+            host: parsed.hostname,
+        };
+    })
+        .filter((item) => !item.host.includes('google.'))
+        .filter((item) => {
+        const key = item.url.replace(/[#?].*$/, '');
+        if (seen.has(key))
+            return false;
+        seen.add(key);
+        return true;
+    });
     const ranked = results.map((result, index) => ({
         position: index + 1,
         ...result,
     }));
     console.log(`[step3] done ${new Date().toISOString()}`);
     return ranked;
+}
+async function step4_clickTargetGoogleResult(page, targetResult) {
+    console.log(`[step4-click] start ${new Date().toISOString()}`);
+    await waitUntilSearchResultsReady(page);
+    const anchors = await page.locator('a[href]').all();
+    for (const anchor of anchors.slice(0, 80)) {
+        const href = await anchor.getAttribute('href');
+        if (!href)
+            continue;
+        const decodedHref = decodeGoogleHref(href);
+        if (decodedHref !== targetResult.url && href !== targetResult.clickUrl)
+            continue;
+        if (!(await anchor.isVisible()))
+            continue;
+        await anchor.scrollIntoViewIfNeeded();
+        await anchor.click();
+        await waitUntilState('target result opened', async () => {
+            const url = await page.url();
+            let host = '';
+            try {
+                host = new URL(url).hostname;
+            }
+            catch {
+                host = '';
+            }
+            return {
+                ok: isTargetHost(host),
+                url,
+                title: await page.title(),
+            };
+        }, 45_000);
+        console.log(`[step4-click] done ${new Date().toISOString()}`);
+        return;
+    }
+    throw new Error(`Khong tim thay link Google de bam cho ket qua: ${targetResult.url}`);
 }
 async function extractInternalLinks(page, baseHost) {
     return (await page.evaluate((hostArg) => {
@@ -204,6 +273,43 @@ function cleanAuditUrl(url) {
     parsed.hash = '';
     return parsed.href;
 }
+function resolveHref(href, baseUrl) {
+    return new URL(href, baseUrl).href;
+}
+async function clickOrGotoInternalLink(page, link, deadline) {
+    const targetUrl = cleanAuditUrl(link);
+    const currentUrl = await page.url();
+    const anchors = await page.locator('a[href]').all();
+    for (const anchor of anchors.slice(0, 160)) {
+        const href = await anchor.getAttribute('href');
+        if (!href)
+            continue;
+        let anchorUrl = '';
+        try {
+            anchorUrl = cleanAuditUrl(resolveHref(href, currentUrl));
+        }
+        catch {
+            continue;
+        }
+        if (anchorUrl !== targetUrl || !(await anchor.isVisible()))
+            continue;
+        await anchor.scrollIntoViewIfNeeded();
+        await anchor.click();
+        await waitUntilState('internal link opened', async () => {
+            const url = await page.url();
+            return {
+                ok: cleanAuditUrl(url) === targetUrl,
+                url,
+                title: await page.title(),
+            };
+        }, Math.min(20_000, remainingMs(deadline)));
+        return;
+    }
+    await page.goto(targetUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: Math.min(30_000, remainingMs(deadline)),
+    });
+}
 async function auditCurrentPage(page) {
     const links = await extractInternalLinks(page, normalizeHost(appConfig.targetDomain));
     return {
@@ -259,10 +365,7 @@ async function step4_auditTargetSite(page, startUrl) {
     for (const link of pickAuditLinks(links, await page.url())) {
         if (remainingMs(deadline) <= 5_000 || visitedPages.length >= 6)
             break;
-        await page.goto(cleanAuditUrl(link), {
-            waitUntil: 'domcontentloaded',
-            timeout: Math.min(30_000, remainingMs(deadline)),
-        });
+        await clickOrGotoInternalLink(page, link, deadline);
         await delayWithinBudget(1_500, deadline);
         await scrollPageForQa(page, deadline);
         visitedPages.push(await auditCurrentPage(page));
@@ -311,7 +414,10 @@ export async function runGoogleSearchWorkflow(input) {
         });
         const { topResults } = await pipeline(session.page, keyword);
         const targetResult = topResults.find((result) => isTargetHost(result.host));
-        const siteAudit = await step4_auditTargetSite(session.page, targetResult?.url || appConfig.targetBaseUrl);
+        if (targetResult) {
+            await step4_clickTargetGoogleResult(session.page, targetResult);
+        }
+        const siteAudit = await step4_auditTargetSite(session.page, targetResult ? await session.page.url() : appConfig.targetBaseUrl);
         return {
             keyword,
             profileId: input.profileId,

@@ -9,6 +9,7 @@ const DEFAULT_APP_ALIASES = [
         name: 'Khai Hoàn Derma Rank QA',
     },
 ];
+const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
 function loadEnvFile(path = '.env') {
     if (!existsSync(path))
         return;
@@ -90,6 +91,12 @@ function getAiAppLogPath(appId) {
         return explicit;
     const appData = process.env.APPDATA || `${process.env.USERPROFILE}\\AppData\\Roaming`;
     return `${appData}\\omnilogin\\ai-app\\logs\\${appId}.log`;
+}
+function getLocalAiAppScriptPath(appId) {
+    const explicit = process.env.LOCAL_AI_APP_SCRIPT_PATH?.trim();
+    if (explicit)
+        return explicit;
+    return `${process.cwd()}\\exports\\${appId}.js`;
 }
 function getFileSize(path) {
     try {
@@ -389,10 +396,17 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
             ].join('\n'));
             await refreshMktProxyForProfile(telegram, chatId, omni, profileId, mktProxyConfig);
             const aiAppLogOffset = getFileSize(getAiAppLogPath(app.appId));
-            const result = await omni.aiApps.run(app.appId, {
-                profileId,
-                mode: 'debug',
-            });
+            const localScriptPath = getLocalAiAppScriptPath(app.appId);
+            const hasLocalScript = existsSync(localScriptPath);
+            const result = hasLocalScript
+                ? await runLocalAiAppScript(omni, app, profileId)
+                : await omni.aiApps.run(app.appId, {
+                    profileId,
+                    mode: 'debug',
+                });
+            if (!result) {
+                throw new Error(`Khong the chay workflow ${app.appId}: khong tim thay local script va AI App khong tra ket qua`);
+            }
             if (!result.ok) {
                 await telegram.sendMessage(chatId, [
                     '<b>Profile chạy lỗi</b>',
@@ -403,14 +417,16 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
             }
             else {
                 await telegram.sendMessage(chatId, [
-                    '<b>Đã gửi lệnh chạy</b>',
+                    hasLocalScript ? '<b>Workflow đã chạy xong</b>' : '<b>Đã gửi lệnh chạy</b>',
                     `Alias: ${code(app.alias)}`,
                     `Profile: ${code(profileId)}`,
-                    'Omnilogin đang xử lý AI App trong nền.',
-                    `Bot sẽ chờ: ${code(`${profileRunSeconds} giây`)}`,
+                    hasLocalScript
+                        ? `Nguồn script: ${code(localScriptPath)}`
+                        : 'Omnilogin đang xử lý AI App trong nền.',
+                    hasLocalScript ? '' : `Bot sẽ chờ: ${code(`${profileRunSeconds} giây`)}`,
                 ].join('\n'));
             }
-            if (result.ok && profileRunSeconds > 0) {
+            if (result.ok && !hasLocalScript && profileRunSeconds > 0) {
                 state.lastMessage = `Đang chờ profile ${profileId} hoàn tất trong ${profileRunSeconds}s`;
                 await telegram.sendMessage(chatId, [
                     '<b>Đang chờ workflow hoàn tất</b>',
@@ -434,7 +450,7 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
             }
             if (!state.active)
                 break;
-            if (result.ok && closeAfterRun) {
+            if (closeAfterRun) {
                 state.lastMessage = `Đang đóng profile ${profileId}`;
                 try {
                     await omni.close(profileId);
@@ -489,6 +505,24 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
     finally {
         state.active = false;
         state.currentProfile = undefined;
+    }
+}
+async function runLocalAiAppScript(omni, app, profileId) {
+    const scriptPath = getLocalAiAppScriptPath(app.appId);
+    if (!existsSync(scriptPath))
+        return null;
+    const { session } = await omni.open(profileId, {
+        headless: false,
+    });
+    const script = readFileSync(scriptPath, 'utf8');
+    const runScript = new AsyncFunction('page', 'omni', '__params', script);
+    try {
+        await runScript(session.page, session.services, {});
+        return { ok: true };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { ok: false, error: message };
     }
 }
 async function main() {

@@ -31,6 +31,39 @@ function cleanUrl(url) {
   return parsed.href;
 }
 
+function decodeGoogleHref(rawHref) {
+  try {
+    const parsed = new URL(rawHref, 'https://www.google.com/');
+    const host = normalizeHost(parsed.hostname);
+    if (host === 'google.com' || host.endsWith('.google.com')) {
+      const wrappedUrl =
+        parsed.searchParams.get('q') ||
+        parsed.searchParams.get('url') ||
+        parsed.searchParams.get('adurl');
+      if (wrappedUrl && wrappedUrl.startsWith('http')) return wrappedUrl;
+    }
+    return parsed.href;
+  } catch {
+    return rawHref;
+  }
+}
+
+function resolveHref(href, baseUrl) {
+  return new URL(href, baseUrl).href;
+}
+
+function sameCleanUrl(left, right) {
+  try {
+    return cleanUrl(left) === cleanUrl(right);
+  } catch {
+    return false;
+  }
+}
+
+function cssAttrValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function remainingMs(deadline) {
   return Math.max(0, deadline - Date.now());
 }
@@ -262,8 +295,7 @@ async function searchGoogle(keyword, options = {}) {
 
 async function extractGoogleResults() {
   console.log('[step3] extract google results ' + new Date().toISOString());
-  const results = await page.locator('a').evaluateAll(() => {
-    const seen = new Set();
+  const rawResults = await page.evaluate(() => {
     const blockedHosts = [
       'google.',
       'gstatic.',
@@ -282,6 +314,7 @@ async function extractGoogleResults() {
             (anchor.textContent || '').trim();
           return {
             title: title.replace(/\s+/g, ' ').slice(0, 180),
+            clickUrl: url.href,
             url: url.href,
             host: url.hostname,
           };
@@ -291,21 +324,44 @@ async function extractGoogleResults() {
       })
       .filter(Boolean)
       .filter((item) => item.title && item.url.startsWith('http'))
-      .filter((item) => !blockedHosts.some((host) => item.host.includes(host)))
       .filter((item) => {
-        const key = item.url.replace(/[#?].*$/, '');
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+        if (!blockedHosts.some((host) => item.host.includes(host))) return true;
+        return item.host.includes('google.') && new URL(item.url).searchParams.has('q');
       })
-      .slice(0, 20);
+      .slice(0, 40);
   });
+
+  const seen = new Set();
+  const results = rawResults
+    .map((result) => {
+      try {
+        const decodedUrl = decodeGoogleHref(result.clickUrl || result.url);
+        const parsed = new URL(decodedUrl);
+        return {
+          ...result,
+          url: parsed.href,
+          host: parsed.hostname,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .filter((item) => !normalizeHost(item.host).includes('google.'))
+    .filter((item) => {
+      const key = cleanUrl(item.url);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 20);
 
   return results.map((result, index) => ({
     position: index + 1,
     title: result.title,
     url: result.url,
     host: result.host,
+    clickUrl: result.clickUrl,
   }));
 }
 
@@ -386,6 +442,169 @@ async function extractInternalLinks(targetDomain) {
   }, targetDomain);
 }
 
+async function scrollToRelatedProducts() {
+  const found = await page.evaluate(() => {
+    const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,section,div'));
+    const target = headings.find((element) => {
+      const text = (element.textContent || '').trim().toLowerCase();
+      return text.includes('sản phẩm tương tự') || text.includes('san pham tuong tu') || text.includes('related products');
+    });
+    if (!target) return false;
+    target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    return true;
+  });
+
+  if (found) {
+    await wait(700 + Math.floor(Math.random() * 500));
+    return true;
+  }
+
+  return false;
+}
+
+async function maybeInspectProductImages(label, deadline) {
+  if (remainingMs(deadline) <= 12000) return { inspected: false, reason: 'budget' };
+  if (Math.random() > 0.55) {
+    console.log(label + ' skip product image inspect by random');
+    return { inspected: false, reason: 'random' };
+  }
+
+  const candidates = await page.evaluate(() => {
+    const selectors = [
+      '.woocommerce-product-gallery img',
+      '.product-gallery img',
+      '.product-images img',
+      '.product img',
+      'main img',
+      'img',
+    ];
+    const out = [];
+    for (const selector of selectors) {
+      for (const img of Array.from(document.querySelectorAll(selector))) {
+        const rect = img.getBoundingClientRect();
+        const src = img.currentSrc || img.src || '';
+        const alt = img.alt || '';
+        if (!src || rect.width < 90 || rect.height < 90) continue;
+        if (rect.bottom < 0 || rect.top > window.innerHeight * 1.6) continue;
+        out.push({
+          src,
+          alt,
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+      if (out.length >= 8) break;
+    }
+    return out;
+  });
+
+  if (candidates.length === 0) {
+    console.log(label + ' no product image candidate');
+    return { inspected: false, reason: 'no-image' };
+  }
+
+  const selected = candidates[Math.floor(Math.random() * Math.min(candidates.length, 4))];
+  const image = page.locator('img[src="' + cssAttrValue(selected.src) + '"], img[srcset*="' + cssAttrValue(selected.src.split('/').pop() || selected.src) + '"]').first();
+  if ((await image.count()) === 0 || !(await image.isVisible())) {
+    console.log(label + ' image locator not visible');
+    return { inspected: false, reason: 'not-visible' };
+  }
+
+  try {
+    console.log(label + ' click product image: ' + selected.src);
+    await image.scrollIntoViewIfNeeded();
+    await wait(500 + Math.floor(Math.random() * 600));
+    await image.click();
+    await wait(1200 + Math.floor(Math.random() * 1600));
+
+    const openedOverlay = await page.evaluate(() => {
+      const selectors = [
+        '.pswp',
+        '.photoswipe',
+        '.mfp-wrap',
+        '.fancybox-container',
+        '.woocommerce-product-gallery__trigger',
+        '[role="dialog"]',
+        '.modal',
+      ];
+      return selectors.some((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return false;
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 20 && rect.height > 20;
+      });
+    }).catch(() => false);
+
+    if (openedOverlay) {
+      if (Math.random() < 0.45) {
+        await page.keyboard.press('ArrowRight');
+        await wait(800 + Math.floor(Math.random() * 900));
+      }
+      if (Math.random() < 0.35) {
+        await page.keyboard.press('ArrowLeft');
+        await wait(700 + Math.floor(Math.random() * 800));
+      }
+      await page.keyboard.press('Escape');
+      await wait(700 + Math.floor(Math.random() * 800));
+      return { inspected: true, openedOverlay: true };
+    }
+
+    await page.goBack({ timeout: 8000 }).catch(() => undefined);
+    await wait(800 + Math.floor(Math.random() * 700));
+    await ensurePageUsable(label + ' after image back', deadline);
+    return { inspected: true, openedOverlay: false };
+  } catch (error) {
+    console.log(label + ' product image inspect failed:', error.message || String(error));
+    await page.keyboard.press('Escape').catch(() => undefined);
+    return { inspected: false, reason: error.message || String(error) };
+  }
+}
+
+async function extractRelatedProductLinks(targetDomain, currentUrl, visitedSet) {
+  const links = await page.evaluate((domain) => {
+    const baseHost = String(domain).toLowerCase().replace(/^www\./, '');
+    const normalize = (value) => String(value || '').toLowerCase().replace(/^www\./, '');
+    const selectors = [
+      '.related a[href*="/product/"]',
+      '.related.products a[href*="/product/"]',
+      '.products a[href*="/product/"]',
+      '.product a[href*="/product/"]',
+      'a[href*="/product/"]',
+    ];
+    const out = [];
+    for (const selector of selectors) {
+      for (const anchor of Array.from(document.querySelectorAll(selector))) {
+        try {
+          const url = new URL(anchor.href);
+          const host = normalize(url.hostname);
+          const text = (anchor.textContent || '').trim().replace(/\s+/g, ' ');
+          if (host === baseHost || host.endsWith('.' + baseHost)) {
+            out.push({ url: url.href, text });
+          }
+        } catch {
+          // ignore invalid hrefs
+        }
+      }
+      if (out.length >= 8) break;
+    }
+    return out;
+  }, targetDomain);
+
+  const currentClean = cleanUrl(currentUrl);
+  const seen = new Set();
+  return links
+    .map((item) => cleanUrl(item.url))
+    .filter((link) => link !== currentClean)
+    .filter((link) => !visitedSet.has(link))
+    .filter((link) => {
+      if (seen.has(link)) return false;
+      seen.add(link);
+      return true;
+    })
+    .slice(0, 6);
+}
+
 function pickAuditLinks(links, currentUrl, visitedSet) {
   const hints = ['/san-pham', '/product', '/shop', '/collections', '/products', 'treamax', 'serum', 'kem-'];
   const blocked = ['/wp-content/', '/tai-khoan', '/gio-hang', '/checkout', '/cart', '/my-account'];
@@ -409,6 +628,61 @@ async function auditCurrentPage(targetDomain) {
     internalLinkCount: links.length,
     sampledInternalLinks: links.slice(0, 10),
   };
+}
+
+async function clickOrGotoInternalLink(link, deadline) {
+  const targetUrl = cleanUrl(link);
+  const currentUrl = await page.url();
+  const anchors = await page.locator('a[href]').all();
+
+  for (const anchor of anchors.slice(0, 180)) {
+    const href = await anchor.getAttribute('href');
+    if (!href) continue;
+
+    let anchorUrl = '';
+    try {
+      anchorUrl = cleanUrl(resolveHref(href, currentUrl));
+    } catch {
+      continue;
+    }
+
+    if (anchorUrl !== targetUrl || !(await anchor.isVisible())) continue;
+
+    try {
+      console.log('[audit] click internal link: ' + targetUrl);
+      await anchor.scrollIntoViewIfNeeded();
+      await wait(300 + Math.floor(Math.random() * 500));
+      await anchor.click();
+      await waitUntilState(
+        'internal link opened',
+        async () => {
+          const url = await page.url();
+          return {
+            ok: sameCleanUrl(url, targetUrl),
+            url,
+            title: await page.title(),
+          };
+        },
+        Math.min(12000, remainingMs(deadline)),
+      );
+      await ensurePageUsable('[audit] after internal click', deadline);
+      return { openedBy: 'click' };
+    } catch (error) {
+      console.log('[audit] click internal failed, fallback goto:', error.message || String(error));
+      break;
+    }
+  }
+
+  await gotoWithUsableFallback(
+    targetUrl,
+    {
+      waitUntil: 'domcontentloaded',
+      timeout: Math.min(30000, remainingMs(deadline)),
+    },
+    '[audit] after internal goto',
+    deadline,
+  );
+  return { openedBy: 'goto' };
 }
 
 async function scrollPageForQa(deadline) {
@@ -487,6 +761,260 @@ function shuffleArray(items) {
   return out;
 }
 
+async function openUrlFallback(url, label) {
+  const cleanTarget = cleanUrl(url);
+  console.log(label + ' fallback open URL: ' + cleanTarget);
+  try {
+    if (page.browser && page.browser.newPage) {
+      const created = await page.browser.newPage(cleanTarget, { active: true });
+      if (created && created.targetId && page.browser.bringToFront) {
+        await page.browser.bringToFront(created.targetId);
+      }
+      await page.waitForLoadState('domcontentloaded');
+      await ensurePageUsable(label + ' after new tab fallback');
+      return;
+    }
+  } catch (error) {
+    console.log(label + ' new tab fallback failed:', error.message || String(error));
+  }
+
+  await gotoWithUsableFallback(
+    cleanTarget,
+    { waitUntil: 'domcontentloaded', timeout: 30000 },
+    label + ' after goto fallback',
+  );
+}
+
+async function tryClickGoogleResult(result, label, options = {}) {
+  const expectedUrl = cleanUrl(result.url);
+  const searchUrl = options.searchUrl || '';
+  if (searchUrl) {
+    const currentUrl = await page.url();
+    if (!currentUrl.includes('/search')) {
+      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await wait(600 + Math.floor(Math.random() * 700));
+    }
+  }
+
+  const anchors = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('a[href]')).slice(0, 220).map((anchor) => ({
+      rawHref: anchor.getAttribute('href') || '',
+      href: anchor.href || '',
+      text: (anchor.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120),
+    })),
+  );
+
+  for (const item of anchors) {
+    const decodedHref = decodeGoogleHref(item.href || item.rawHref);
+    if (!sameCleanUrl(decodedHref, expectedUrl) && !sameCleanUrl(item.href, result.clickUrl || expectedUrl)) {
+      continue;
+    }
+
+    try {
+      console.log(label + ' click Google result: ' + expectedUrl);
+      const selectors = [
+        item.rawHref ? 'a[href="' + cssAttrValue(item.rawHref) + '"]' : '',
+        item.href ? 'a[href="' + cssAttrValue(item.href) + '"]' : '',
+      ].filter(Boolean);
+      let anchor = null;
+      for (const selector of selectors) {
+        const candidate = page.locator(selector).first();
+        if ((await candidate.count()) > 0 && (await candidate.isVisible())) {
+          anchor = candidate;
+          break;
+        }
+      }
+      if (!anchor) continue;
+
+      await anchor.scrollIntoViewIfNeeded();
+      await wait(350 + Math.floor(Math.random() * 500));
+      await anchor.click();
+      await waitUntilState(
+        label + ' opened after click',
+        async () => {
+          const url = await page.url();
+          let host = '';
+          try {
+            host = normalizeHost(new URL(url).hostname);
+          } catch {
+            host = '';
+          }
+          return {
+            ok: !host.includes('google.') && !url.includes('/search'),
+            url,
+            title: await page.title(),
+          };
+        },
+        25000,
+      );
+      await ensurePageUsable(label + ' after Google click');
+      return { clicked: true, openedBy: 'click' };
+    } catch (error) {
+      console.log(label + ' click failed:', error.message || String(error));
+      break;
+    }
+  }
+
+  if (options.allowFallback !== false) {
+    await openUrlFallback(expectedUrl, label);
+    return { clicked: false, openedBy: 'fallback' };
+  }
+
+  return { clicked: false, openedBy: 'none' };
+}
+
+async function getReadablePageState() {
+  const currentUrl = await page.url();
+  const currentTitle = await page.title();
+  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const stillGoogle = normalizeHost(new URL(currentUrl).hostname).includes('google.');
+  const readable = bodyText.trim().length > 250;
+  return {
+    currentUrl,
+    currentTitle,
+    readable,
+    stillGoogle,
+    bodyLength: bodyText.trim().length,
+  };
+}
+
+async function inspectPageHealth() {
+  const url = await page.url();
+  const title = await page.title();
+  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const dom = await page.evaluate(() => {
+    const body = document.body;
+    const root = document.documentElement;
+    const bodyStyle = body ? getComputedStyle(body) : null;
+    const rootStyle = root ? getComputedStyle(root) : null;
+    const background = bodyStyle?.backgroundColor || rootStyle?.backgroundColor || '';
+    const foreground = bodyStyle?.color || '';
+    const visibleElements = Array.from(document.querySelectorAll('body *')).filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.display !== 'none';
+    }).length;
+    return {
+      readyState: document.readyState,
+      background,
+      foreground,
+      childCount: body ? body.children.length : 0,
+      visibleElements,
+      linkCount: document.querySelectorAll('a[href]').length,
+      imageCount: document.querySelectorAll('img').length,
+      formCount: document.querySelectorAll('input,button,select,textarea').length,
+      scrollHeight: Math.max(body?.scrollHeight || 0, root?.scrollHeight || 0),
+    };
+  }).catch((error) => ({
+    readyState: 'error',
+    background: '',
+    foreground: '',
+    childCount: 0,
+    visibleElements: 0,
+    linkCount: 0,
+    imageCount: 0,
+    formCount: 0,
+    scrollHeight: 0,
+    error: error.message || String(error),
+  }));
+
+  const textLength = bodyText.trim().length;
+  const blackBackground = /rgba?\(\s*0\s*,\s*0\s*,\s*0(?:\s*,\s*(?:1|0?\.\d+))?\s*\)/i.test(dom.background);
+  const noUi =
+    textLength < 80 &&
+    dom.visibleElements < 12 &&
+    dom.linkCount < 3 &&
+    dom.imageCount < 2 &&
+    dom.formCount < 2;
+  let currentHost = '';
+  try {
+    currentHost = normalizeHost(new URL(url).hostname);
+  } catch {
+    currentHost = '';
+  }
+  const tooShortForSite =
+    !currentHost.includes('google.') &&
+    textLength < 120 &&
+    dom.linkCount < 5 &&
+    dom.scrollHeight < 900;
+
+  return {
+    ok: !(blackBackground && noUi) && !tooShortForSite && dom.readyState !== 'error',
+    url,
+    title,
+    textLength,
+    blackBackground,
+    noUi,
+    tooShortForSite,
+    ...dom,
+  };
+}
+
+async function ensurePageUsable(label, deadline) {
+  const maxReloads = 2;
+  for (let attempt = 0; attempt <= maxReloads; attempt++) {
+    await wait(900 + Math.floor(Math.random() * 700));
+    const health = await inspectPageHealth();
+    if (health.ok) {
+      if (attempt > 0) {
+        console.log(label + ' recovered after reload: ' + JSON.stringify({
+          attempt,
+          url: health.url,
+          title: health.title,
+          textLength: health.textLength,
+          visibleElements: health.visibleElements,
+          linkCount: health.linkCount,
+          imageCount: health.imageCount,
+        }));
+      }
+      return health;
+    }
+
+    console.log(label + ' page not usable, reload ' + (attempt + 1) + ': ' + JSON.stringify({
+      url: health.url,
+      title: health.title,
+      textLength: health.textLength,
+      background: health.background,
+      blackBackground: health.blackBackground,
+      visibleElements: health.visibleElements,
+      linkCount: health.linkCount,
+      imageCount: health.imageCount,
+      scrollHeight: health.scrollHeight,
+    }));
+
+    if (attempt >= maxReloads || (deadline && remainingMs(deadline) <= 8000)) {
+      return health;
+    }
+
+    await page.reload({
+      waitUntil: 'domcontentloaded',
+      timeout: Math.min(30000, deadline ? remainingMs(deadline) : 30000),
+    }).catch((error) => {
+      console.log(label + ' reload failed:', error.message || String(error));
+    });
+  }
+}
+
+async function gotoWithUsableFallback(url, options = {}, label = '[goto]', deadline) {
+  const timeout = options.timeout || (deadline ? Math.min(30000, remainingMs(deadline)) : 30000);
+  try {
+    await page.goto(url, {
+      waitUntil: options.waitUntil || 'domcontentloaded',
+      timeout,
+    });
+  } catch (error) {
+    const message = error.message || String(error);
+    console.log(label + ' navigation failed, checking current page:', message);
+    const health = await ensurePageUsable(label + ' after navigation error', deadline);
+    const currentUrl = await page.url().catch(() => '');
+    if (!health || !health.ok || !sameCleanUrl(currentUrl, url)) {
+      throw error;
+    }
+  }
+
+  return ensurePageUsable(label, deadline);
+}
+
 async function openRandomReadableNewsResult(topResults, config) {
   const candidates = topResults
     .filter((result) => !isTargetHost(result.host, config.targetDomain))
@@ -495,6 +1023,7 @@ async function openRandomReadableNewsResult(topResults, config) {
 
   const shuffledCandidates = shuffleArray(candidates);
   const attempts = [];
+  const googleSearchUrl = await page.url();
   console.log('[news] top 6 candidates: ' + JSON.stringify(candidates.map((result) => ({
     position: result.position,
     host: result.host,
@@ -511,27 +1040,25 @@ async function openRandomReadableNewsResult(topResults, config) {
     });
 
     try {
-      console.log('[news] open random top-6 candidate directly: ' + url);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 18000 });
+      await tryClickGoogleResult(result, '[news]', {
+        searchUrl: googleSearchUrl,
+        allowFallback: true,
+      });
       await wait(1200 + Math.floor(Math.random() * 1400));
 
-      const currentUrl = await page.url();
-      const currentTitle = await page.title();
-      const bodyText = await page.locator('body').innerText().catch(() => '');
-      const stillGoogle = normalizeHost(new URL(currentUrl).hostname).includes('google.');
-      const readable = bodyText.trim().length > 250;
+      const pageState = await getReadablePageState();
 
-      if (!stillGoogle && readable) {
+      if (!pageState.stillGoogle && pageState.readable) {
         return {
           result,
           attempts,
-          currentUrl,
-          currentTitle,
+          currentUrl: pageState.currentUrl,
+          currentTitle: pageState.currentTitle,
         };
       }
 
       attempts[attempts.length - 1].skippedReason =
-        'Opened page was not readable or still on Google';
+        'Opened page was not readable or still on Google: ' + JSON.stringify(pageState);
     } catch (error) {
       attempts[attempts.length - 1].skippedReason = error.message || String(error);
       console.log('[news] candidate failed:', error.message || String(error));
@@ -616,21 +1143,19 @@ async function forceOpenFallbackNews(keyword, existingAttempts) {
     });
 
     try {
-      console.log('[news] force open fallback news directly: ' + url);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 22000 });
+      await openUrlFallback(url, '[news]');
       await wait(1500 + Math.floor(Math.random() * 1300));
-      const currentUrl = await page.url();
-      const bodyText = await page.locator('body').innerText().catch(() => '');
-      const stillGoogle = normalizeHost(new URL(currentUrl).hostname).includes('google.');
-      if (!stillGoogle && bodyText.trim().length > 250) {
+      const pageState = await getReadablePageState();
+      if (!pageState.stillGoogle && pageState.readable) {
         return {
           result,
           attempts,
-          currentUrl,
-          currentTitle: await page.title(),
+          currentUrl: pageState.currentUrl,
+          currentTitle: pageState.currentTitle,
         };
       }
-      attempts[attempts.length - 1].skippedReason = 'Fallback page was not readable';
+      attempts[attempts.length - 1].skippedReason =
+        'Fallback page was not readable: ' + JSON.stringify(pageState);
     } catch (error) {
       attempts[attempts.length - 1].skippedReason = error.message || String(error);
       console.log('[news] fallback failed:', error.message || String(error));
@@ -720,40 +1245,53 @@ async function auditTargetSite(config, startUrl) {
   try {
     const firstUrl = cleanUrl(startUrl);
     visitedSet.add(firstUrl);
-    await page.goto(firstUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: Math.min(45000, remainingMs(deadline)),
-    });
+    await gotoWithUsableFallback(
+      firstUrl,
+      {
+        waitUntil: 'domcontentloaded',
+        timeout: Math.min(45000, remainingMs(deadline)),
+      },
+      '[audit] first product page',
+      deadline,
+    );
   } catch (error) {
     console.log('Start URL failed, fallback to target base URL:', error.message || String(error));
     const fallbackUrl = cleanUrl(config.targetBaseUrl);
     visitedSet.add(fallbackUrl);
-    await page.goto(fallbackUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: Math.min(45000, remainingMs(deadline)),
-    });
+    await gotoWithUsableFallback(
+      fallbackUrl,
+      {
+        waitUntil: 'domcontentloaded',
+        timeout: Math.min(45000, remainingMs(deadline)),
+      },
+      '[audit] fallback base page',
+      deadline,
+    );
   }
 
   await waitWithinBudget(1200 + Math.floor(Math.random() * 1200), deadline);
-  const firstReadStats = await readPageWithinBudget(15, 30, deadline);
+  await maybeInspectProductImages('[audit] first product image', deadline);
+  await scrollToRelatedProducts();
+  const firstReadStats = await readPageWithinBudget(4, 7, deadline);
   visitedPages.push({
     ...(await auditCurrentPage(config.targetDomain)),
     readStats: firstReadStats,
   });
 
+  const relatedLinks = await extractRelatedProductLinks(config.targetDomain, await page.url(), visitedSet);
   const links = await extractInternalLinks(config.targetDomain);
-  const auditLinks = pickAuditLinks(links, await page.url(), visitedSet);
+  const auditLinks = relatedLinks
+    .concat(pickAuditLinks(links, await page.url(), visitedSet))
+    .filter((link, index, arr) => arr.indexOf(link) === index);
   for (const link of auditLinks) {
     if (remainingMs(deadline) <= 5000 || visitedPages.length >= 6) break;
     const cleanLink = cleanUrl(link);
     if (visitedSet.has(cleanLink)) continue;
     visitedSet.add(cleanLink);
-    await page.goto(cleanLink, {
-      waitUntil: 'domcontentloaded',
-      timeout: Math.min(30000, remainingMs(deadline)),
-    });
+    await clickOrGotoInternalLink(cleanLink, deadline);
     await waitWithinBudget(1000 + Math.floor(Math.random() * 1200), deadline);
-    const readStats = await readPageWithinBudget(15, 30, deadline);
+    await maybeInspectProductImages('[audit] related product image', deadline);
+    const readStats = await readPageWithinBudget(6, 12, deadline);
     visitedPages.push({
       ...(await auditCurrentPage(config.targetDomain)),
       readStats,
@@ -796,14 +1334,21 @@ async function main() {
   const targetResult = targetScan.targetResult;
   const targetStartUrl = targetResult ? cleanUrl(targetResult.url) : cleanUrl(config.targetBaseUrl);
   console.log(
-    '[derma] open target directly: ' +
+    '[derma] open target from Google: ' +
       JSON.stringify({
         foundInGoogle: Boolean(targetResult),
         rank: targetResult ? targetResult.position : null,
         url: targetStartUrl,
       }),
   );
-  const siteAudit = await auditTargetSite(config, targetStartUrl);
+  if (targetResult) {
+    await tryClickGoogleResult(targetResult, '[derma]', {
+      searchUrl: await page.url(),
+      allowFallback: true,
+    });
+    await wait(1000 + Math.floor(Math.random() * 1000));
+  }
+  const siteAudit = await auditTargetSite(config, targetResult ? await page.url() : targetStartUrl);
 
   const output = {
     newsWarmup,
