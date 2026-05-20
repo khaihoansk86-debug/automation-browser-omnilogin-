@@ -424,40 +424,110 @@ async function readPageForDuration(minSeconds, maxSeconds) {
   };
 }
 
+async function openFirstReadableNewsResult(topResults, config) {
+  const candidates = topResults
+    .filter((result) => !isTargetHost(result.host, config.targetDomain))
+    .filter((result) => /^https?:\/\//i.test(result.url))
+    .slice(0, 6);
+
+  const attempts = [];
+  for (const result of candidates) {
+    const url = cleanUrl(result.url);
+    attempts.push({
+      title: result.title,
+      host: result.host,
+      url,
+    });
+
+    try {
+      console.log('[news] open direct candidate: ' + url);
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 18000 });
+      await wait(1200 + Math.floor(Math.random() * 1400));
+
+      const currentUrl = await page.url();
+      const currentTitle = await page.title();
+      const bodyText = await page.locator('body').innerText().catch(() => '');
+      const stillGoogle = normalizeHost(new URL(currentUrl).hostname).includes('google.');
+      const readable = bodyText.trim().length > 250;
+
+      if (!stillGoogle && readable) {
+        return {
+          result,
+          attempts,
+          currentUrl,
+          currentTitle,
+        };
+      }
+
+      attempts[attempts.length - 1].skippedReason =
+        'Opened page was not readable or still on Google';
+    } catch (error) {
+      attempts[attempts.length - 1].skippedReason = error.message || String(error);
+      console.log('[news] candidate failed:', error.message || String(error));
+    }
+  }
+
+  return {
+    result: null,
+    attempts,
+    currentUrl: await page.url(),
+    currentTitle: await page.title(),
+  };
+}
+
 async function warmupNewsRead(config) {
   console.log('[news] start ' + new Date().toISOString());
   const keyword = await getNewsKeyword(config);
-  await searchGoogle(keyword, {
-    label: '[news] after search',
-    afterResultsMinSeconds: 5,
-    afterResultsMaxSeconds: 10,
-  });
-  const topResults = await extractGoogleResults();
-  const newsResult = topResults.find((result) => !isTargetHost(result.host, config.targetDomain));
+  const startedAt = Date.now();
+  try {
+    await searchGoogle(keyword, {
+      label: '[news] after search',
+      afterResultsMinSeconds: 2,
+      afterResultsMaxSeconds: 5,
+    });
+    const topResults = await extractGoogleResults();
+    const openResult = await openFirstReadableNewsResult(topResults, config);
+    const newsResult = openResult.result;
 
-  if (!newsResult) {
+    if (!newsResult) {
+      return {
+        keyword,
+        skipped: true,
+        reason: 'No readable non-target news/search result could be opened',
+        topResults,
+        openAttempts: openResult.attempts,
+      };
+    }
+
+    const maxNewsDeadline = Date.now() + Math.min(65000, Math.max(35000, Number(config.newsReadMaxSeconds || 60) * 1000));
+    const readStats = await readPageWithinBudget(
+      config.newsReadMinSeconds,
+      config.newsReadMaxSeconds,
+      maxNewsDeadline,
+    );
+
+    return {
+      keyword,
+      skipped: false,
+      selectedResult: newsResult,
+      topResults,
+      openAttempts: openResult.attempts,
+      readStats,
+      elapsedMs: Date.now() - startedAt,
+      finalUrl: await page.url(),
+      title: await page.title(),
+    };
+  } catch (error) {
+    console.log('[news] skipped by error:', error.message || String(error));
     return {
       keyword,
       skipped: true,
-      reason: 'No non-target news/search result found',
-      topResults,
+      reason: error.message || String(error),
+      elapsedMs: Date.now() - startedAt,
+      finalUrl: await page.url(),
+      title: await page.title(),
     };
   }
-
-  console.log('[news] open directly: ' + newsResult.url);
-  await page.goto(cleanUrl(newsResult.url), { waitUntil: 'domcontentloaded', timeout: 45000 });
-  await wait(1800 + Math.floor(Math.random() * 1600));
-  const readStats = await readPageForDuration(config.newsReadMinSeconds, config.newsReadMaxSeconds);
-
-  return {
-    keyword,
-    skipped: false,
-    selectedResult: newsResult,
-    topResults,
-    readStats,
-    finalUrl: await page.url(),
-    title: await page.title(),
-  };
 }
 
 async function auditTargetSite(config, startUrl) {
