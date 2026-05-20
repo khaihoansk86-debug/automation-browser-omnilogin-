@@ -38,6 +38,16 @@ function parsePositiveInt(value, fallback) {
         return parsed;
     return fallback;
 }
+function parseBoolean(value, fallback) {
+    if (value === undefined)
+        return fallback;
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'y', 'on'].includes(normalized))
+        return true;
+    if (['0', 'false', 'no', 'n', 'off'].includes(normalized))
+        return false;
+    return fallback;
+}
 function parseArgs(text) {
     const args = {};
     const parts = text.split(/\s+/).slice(1);
@@ -148,6 +158,7 @@ function helpText(defaultAppId) {
         `${code('/run profile=1')} - chạy workflow mặc định`,
         `${code('/run app=derma profile=1')} - chạy workflow theo alias`,
         `${code('/run app=derma profiles=1,2 delay=60')} - chạy nhiều profile, nghỉ giữa mỗi profile`,
+        `${code('/run app=derma profiles=1,2 wait=180 delay=60 close=1')} - chờ mỗi profile chạy xong rồi chuyển profile`,
         `${code('/status')} - xem trạng thái hiện tại`,
         `${code('/stop')} - dừng workflow mặc định`,
         `${code('/stop app=derma')} - dừng workflow theo alias`,
@@ -166,20 +177,26 @@ function listText(aliases, defaultAppId) {
         '<b>Ví dụ</b>',
         code('/run app=derma profile=1'),
         code('/run app=derma profiles=1,2 delay=60'),
+        code('/run app=derma profiles=1,2 wait=180 delay=60 close=1'),
         '',
         '<b>Workflow mặc định</b>',
         code(defaultAppId),
     ].join('\n');
 }
-async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delaySeconds, state) {
+async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delaySeconds, profileRunSeconds, closeAfterRun, state) {
     state.active = true;
     state.appAlias = app.alias;
     state.appId = app.appId;
     state.startedAt = new Date().toISOString();
     state.profiles = profiles;
+    state.profileRunSeconds = profileRunSeconds;
+    state.closeAfterRun = closeAfterRun;
     try {
         for (let index = 0; index < profiles.length; index++) {
+            if (!state.active)
+                break;
             const profileId = profiles[index];
+            state.currentProfile = profileId;
             state.lastMessage = `Đang chạy profile ${profileId}`;
             await telegram.sendMessage(chatId, [
                 '<b>Bắt đầu chạy workflow</b>',
@@ -207,9 +224,42 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
                     `Alias: ${code(app.alias)}`,
                     `Profile: ${code(profileId)}`,
                     'Omnilogin đang xử lý AI App trong nền.',
+                    `Bot sẽ chờ: ${code(`${profileRunSeconds} giây`)}`,
                 ].join('\n'));
             }
+            if (result.ok && profileRunSeconds > 0) {
+                state.lastMessage = `Đang chờ profile ${profileId} hoàn tất trong ${profileRunSeconds}s`;
+                await telegram.sendMessage(chatId, [
+                    '<b>Đang chờ workflow hoàn tất</b>',
+                    `Profile: ${code(profileId)}`,
+                    `Thời gian chờ: ${code(`${profileRunSeconds} giây`)}`,
+                    `Tự đóng profile sau khi chờ: ${code(closeAfterRun ? 'có' : 'không')}`,
+                ].join('\n'));
+                await delay(profileRunSeconds * 1000);
+            }
+            if (!state.active)
+                break;
+            if (result.ok && closeAfterRun) {
+                state.lastMessage = `Đang đóng profile ${profileId}`;
+                try {
+                    await omni.close(profileId);
+                    await telegram.sendMessage(chatId, [
+                        '<b>Đã đóng profile</b>',
+                        `Profile: ${code(profileId)}`,
+                    ].join('\n'));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    await telegram.sendMessage(chatId, [
+                        '<b>Không đóng được profile</b>',
+                        `Profile: ${code(profileId)}`,
+                        `Chi tiết: ${code(message)}`,
+                    ].join('\n'));
+                }
+            }
             if (index < profiles.length - 1 && delaySeconds > 0) {
+                if (!state.active)
+                    break;
                 state.lastMessage = `Nghỉ ${delaySeconds}s trước profile tiếp theo`;
                 await telegram.sendMessage(chatId, [
                     '<b>Tạm nghỉ giữa profile</b>',
@@ -219,13 +269,18 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
                 await delay(delaySeconds * 1000);
             }
         }
-        state.lastMessage = 'Hoàn tất hàng đợi profile';
-        await telegram.sendMessage(chatId, [
-            '<b>Hoàn tất hàng đợi</b>',
-            `Alias: ${code(app.alias)}`,
-            `AI App: ${code(app.appId)}`,
-            `Profiles: ${code(profiles.join(', '))}`,
-        ].join('\n'));
+        if (state.active) {
+            state.lastMessage = 'Hoàn tất hàng đợi profile';
+            await telegram.sendMessage(chatId, [
+                '<b>Hoàn tất hàng đợi</b>',
+                `Alias: ${code(app.alias)}`,
+                `AI App: ${code(app.appId)}`,
+                `Profiles: ${code(profiles.join(', '))}`,
+            ].join('\n'));
+        }
+        else {
+            state.lastMessage = 'Hàng đợi đã dừng';
+        }
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -238,6 +293,7 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delayS
     }
     finally {
         state.active = false;
+        state.currentProfile = undefined;
     }
 }
 async function main() {
@@ -248,6 +304,8 @@ async function main() {
     const aliases = loadAppAliases(defaultAppId);
     const defaultProfileId = parsePositiveInt(process.env.DEFAULT_PROFILE_ID, 1) || 1;
     const defaultDelaySeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_DELAY_SECONDS, 60) || 60;
+    const defaultProfileRunSeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_RUN_SECONDS, 180) || 180;
+    const defaultCloseAfterRun = parseBoolean(process.env.CLOSE_PROFILE_AFTER_RUN, true);
     const omniHost = process.env.OMNILOGIN_HOST?.trim() || 'http://localhost:35353';
     const telegram = new TelegramClient(token);
     const omni = new OmniLogin({ host: omniHost, timeout: 60_000 });
@@ -300,6 +358,9 @@ async function main() {
                             `AI App: ${code(state.appId || '')}`,
                             `Bắt đầu lúc: ${code(state.startedAt || '')}`,
                             `Profiles: ${code(state.profiles?.join(', ') || '')}`,
+                            `Profile hiện tại: ${code(state.currentProfile || '')}`,
+                            `Thời gian chờ/profile: ${code(state.profileRunSeconds ? `${state.profileRunSeconds}s` : '')}`,
+                            `Tự đóng profile: ${code(state.closeAfterRun ? 'có' : 'không')}`,
                             `Ghi chú: ${code(state.lastMessage || '')}`,
                         ].join('\n')
                         : [
@@ -312,6 +373,9 @@ async function main() {
                     const args = parseArgs(text);
                     const app = resolveApp(args, aliases, defaultAppId);
                     await omni.aiApps.stop(app.appId);
+                    if (state.currentProfile) {
+                        await omni.close(state.currentProfile).catch(() => undefined);
+                    }
                     state.active = false;
                     state.lastMessage = `Đã gửi lệnh dừng ${app.alias}`;
                     await telegram.sendMessage(chatId, [
@@ -336,8 +400,11 @@ async function main() {
                     if (profiles.length === 0)
                         profiles.push(defaultProfileId);
                     const delaySeconds = parsePositiveInt(args.delay, defaultDelaySeconds) || defaultDelaySeconds;
+                    const profileRunSeconds = parsePositiveInt(args.wait || args.runtime || args.runwait, defaultProfileRunSeconds) ||
+                        defaultProfileRunSeconds;
+                    const closeAfterRun = parseBoolean(args.close || args.closeprofile, defaultCloseAfterRun);
                     state.command = text;
-                    void runAiAppForProfiles(telegram, chatId, omni, app, profiles, delaySeconds, state);
+                    void runAiAppForProfiles(telegram, chatId, omni, app, profiles, delaySeconds, profileRunSeconds, closeAfterRun, state);
                     continue;
                 }
                 await telegram.sendMessage(chatId, [
