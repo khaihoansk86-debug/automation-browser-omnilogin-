@@ -1,6 +1,14 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { OmniLogin } from '@omnilogin/sdk';
+const DEFAULT_APP_ID = 'khaihoan-derma-rank-qa';
+const DEFAULT_APP_ALIASES = [
+    {
+        alias: 'derma',
+        appId: DEFAULT_APP_ID,
+        name: 'Khai Hoàn Derma Rank QA',
+    },
+];
 function loadEnvFile(path = '.env') {
     if (!existsSync(path))
         return;
@@ -21,7 +29,7 @@ function loadEnvFile(path = '.env') {
 function requiredEnv(name) {
     const value = process.env[name]?.trim();
     if (!value)
-        throw new Error(`Missing required env: ${name}`);
+        throw new Error(`Thiếu biến môi trường bắt buộc: ${name}`);
     return value;
 }
 function parsePositiveInt(value, fallback) {
@@ -60,6 +68,44 @@ function escapeHtml(value) {
 function code(value) {
     return `<code>${escapeHtml(value)}</code>`;
 }
+function loadAppAliases(defaultAppId) {
+    const aliases = new Map();
+    const addAlias = (alias, appId, name) => {
+        const normalizedAlias = alias.trim().toLowerCase();
+        const normalizedAppId = appId.trim();
+        if (!normalizedAlias || !normalizedAppId)
+            return;
+        aliases.set(normalizedAlias, {
+            alias: normalizedAlias,
+            appId: normalizedAppId,
+            name: name?.trim() || normalizedAppId,
+        });
+    };
+    for (const item of DEFAULT_APP_ALIASES) {
+        addAlias(item.alias, item.appId, item.name);
+    }
+    addAlias('default', defaultAppId, 'AI App mặc định');
+    const raw = process.env.AI_APP_ALIASES?.trim();
+    if (raw) {
+        for (const item of raw.split(',')) {
+            const [alias, appId, name] = item.split(':');
+            if (alias && appId)
+                addAlias(alias, appId, name);
+        }
+    }
+    return [...aliases.values()];
+}
+function resolveApp(args, aliases, defaultAppId) {
+    const requested = (args.app || args.wf || args.workflow || args.aiapp || 'derma').trim();
+    const byAlias = aliases.find((item) => item.alias === requested.toLowerCase());
+    if (byAlias)
+        return byAlias;
+    return {
+        alias: requested || 'default',
+        appId: requested || defaultAppId,
+        name: requested || defaultAppId,
+    };
+}
 class TelegramClient {
     token;
     constructor(token) {
@@ -73,7 +119,7 @@ class TelegramClient {
         });
         const payload = (await response.json());
         if (!response.ok || !payload.ok) {
-            throw new Error(payload.description || `Telegram API failed: ${method}`);
+            throw new Error(payload.description || `Telegram API lỗi: ${method}`);
         }
         return payload.result;
     }
@@ -93,23 +139,42 @@ class TelegramClient {
         });
     }
 }
-function helpText() {
+function helpText(defaultAppId) {
     return [
         '<b>Bot điều khiển Omnilogin</b>',
         '',
         '<b>Lệnh hỗ trợ</b>',
-        `${code('/run profile=1')} - chạy 1 profile`,
-        `${code('/run profiles=1,2 delay=60')} - chạy nhiều profile, nghỉ giữa mỗi profile`,
+        `${code('/list')} - xem danh sách workflow/AI App`,
+        `${code('/run profile=1')} - chạy workflow mặc định`,
+        `${code('/run app=derma profile=1')} - chạy workflow theo alias`,
+        `${code('/run app=derma profiles=1,2 delay=60')} - chạy nhiều profile, nghỉ giữa mỗi profile`,
         `${code('/status')} - xem trạng thái hiện tại`,
-        `${code('/stop')} - dừng AI App`,
+        `${code('/stop')} - dừng workflow mặc định`,
+        `${code('/stop app=derma')} - dừng workflow theo alias`,
         `${code('/help')} - xem hướng dẫn`,
         '',
-        '<b>AI App mặc định</b>',
-        code(process.env.AI_APP_ID?.trim() || 'khaihoan-derma-rank-qa'),
+        '<b>Workflow mặc định</b>',
+        code(defaultAppId),
     ].join('\n');
 }
-async function runAiAppForProfiles(telegram, chatId, omni, appId, profiles, delaySeconds, state) {
+function listText(aliases, defaultAppId) {
+    return [
+        '<b>Danh sách workflow/AI App có thể gọi</b>',
+        '',
+        ...aliases.map((item) => `${code(item.alias)} → ${code(item.appId)}\n${escapeHtml(item.name)}`),
+        '',
+        '<b>Ví dụ</b>',
+        code('/run app=derma profile=1'),
+        code('/run app=derma profiles=1,2 delay=60'),
+        '',
+        '<b>Workflow mặc định</b>',
+        code(defaultAppId),
+    ].join('\n');
+}
+async function runAiAppForProfiles(telegram, chatId, omni, app, profiles, delaySeconds, state) {
     state.active = true;
+    state.appAlias = app.alias;
+    state.appId = app.appId;
     state.startedAt = new Date().toISOString();
     state.profiles = profiles;
     try {
@@ -117,18 +182,21 @@ async function runAiAppForProfiles(telegram, chatId, omni, appId, profiles, dela
             const profileId = profiles[index];
             state.lastMessage = `Đang chạy profile ${profileId}`;
             await telegram.sendMessage(chatId, [
-                '<b>Bắt đầu chạy AI App</b>',
-                `Ứng dụng: ${code(appId)}`,
+                '<b>Bắt đầu chạy workflow</b>',
+                `Alias: ${code(app.alias)}`,
+                `AI App: ${code(app.appId)}`,
+                `Tên: ${escapeHtml(app.name)}`,
                 `Profile: ${code(profileId)}`,
                 `Thứ tự: ${code(`${index + 1}/${profiles.length}`)}`,
             ].join('\n'));
-            const result = await omni.aiApps.run(appId, {
+            const result = await omni.aiApps.run(app.appId, {
                 profileId,
                 mode: 'debug',
             });
             if (!result.ok) {
                 await telegram.sendMessage(chatId, [
                     '<b>Profile chạy lỗi</b>',
+                    `Alias: ${code(app.alias)}`,
                     `Profile: ${code(profileId)}`,
                     `Lỗi: ${code(result.error || 'không rõ lỗi')}`,
                 ].join('\n'));
@@ -136,6 +204,7 @@ async function runAiAppForProfiles(telegram, chatId, omni, appId, profiles, dela
             else {
                 await telegram.sendMessage(chatId, [
                     '<b>Đã gửi lệnh chạy</b>',
+                    `Alias: ${code(app.alias)}`,
                     `Profile: ${code(profileId)}`,
                     'Omnilogin đang xử lý AI App trong nền.',
                 ].join('\n'));
@@ -153,7 +222,8 @@ async function runAiAppForProfiles(telegram, chatId, omni, appId, profiles, dela
         state.lastMessage = 'Hoàn tất hàng đợi profile';
         await telegram.sendMessage(chatId, [
             '<b>Hoàn tất hàng đợi</b>',
-            `AI App: ${code(appId)}`,
+            `Alias: ${code(app.alias)}`,
+            `AI App: ${code(app.appId)}`,
             `Profiles: ${code(profiles.join(', '))}`,
         ].join('\n'));
     }
@@ -161,7 +231,8 @@ async function runAiAppForProfiles(telegram, chatId, omni, appId, profiles, dela
         const message = error instanceof Error ? error.message : String(error);
         state.lastMessage = message;
         await telegram.sendMessage(chatId, [
-            '<b>Lỗi khi chạy AI App</b>',
+            '<b>Lỗi khi chạy workflow</b>',
+            `Alias: ${code(app.alias)}`,
             `Chi tiết: ${code(message)}`,
         ].join('\n'));
     }
@@ -173,7 +244,8 @@ async function main() {
     loadEnvFile();
     const token = requiredEnv('TELEGRAM_BOT_TOKEN');
     const allowedChatId = Number(requiredEnv('TELEGRAM_ALLOWED_CHAT_ID'));
-    const appId = process.env.AI_APP_ID?.trim() || 'khaihoan-derma-rank-qa';
+    const defaultAppId = process.env.AI_APP_ID?.trim() || DEFAULT_APP_ID;
+    const aliases = loadAppAliases(defaultAppId);
     const defaultProfileId = parsePositiveInt(process.env.DEFAULT_PROFILE_ID, 1) || 1;
     const defaultDelaySeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_DELAY_SECONDS, 60) || 60;
     const omniHost = process.env.OMNILOGIN_HOST?.trim() || 'http://localhost:35353';
@@ -181,11 +253,11 @@ async function main() {
     const omni = new OmniLogin({ host: omniHost, timeout: 60_000 });
     const state = { active: false };
     let offset = 0;
-    console.log(`Telegram bot started. AI_APP_ID=${appId}, OMNILOGIN_HOST=${omniHost}`);
+    console.log(`Telegram bot started. DEFAULT_APP_ID=${defaultAppId}, OMNILOGIN_HOST=${omniHost}`);
     await telegram
         .sendMessage(allowedChatId, [
         '<b>Bot đã sẵn sàng</b>',
-        `AI App: ${code(appId)}`,
+        `Workflow mặc định: ${code(defaultAppId)}`,
         `Omnilogin: ${code(omniHost)}`,
         '',
         `Gõ ${code('/help')} để xem lệnh hỗ trợ.`,
@@ -213,13 +285,19 @@ async function main() {
                     continue;
                 }
                 if (text.startsWith('/help') || text.startsWith('/start')) {
-                    await telegram.sendMessage(chatId, helpText());
+                    await telegram.sendMessage(chatId, helpText(defaultAppId));
+                    continue;
+                }
+                if (text.startsWith('/list')) {
+                    await telegram.sendMessage(chatId, listText(aliases, defaultAppId));
                     continue;
                 }
                 if (text.startsWith('/status')) {
                     await telegram.sendMessage(chatId, state.active
                         ? [
                             '<b>Trạng thái: Đang chạy</b>',
+                            `Alias: ${code(state.appAlias || '')}`,
+                            `AI App: ${code(state.appId || '')}`,
                             `Bắt đầu lúc: ${code(state.startedAt || '')}`,
                             `Profiles: ${code(state.profiles?.join(', ') || '')}`,
                             `Ghi chú: ${code(state.lastMessage || '')}`,
@@ -231,12 +309,15 @@ async function main() {
                     continue;
                 }
                 if (text.startsWith('/stop')) {
-                    await omni.aiApps.stop(appId);
+                    const args = parseArgs(text);
+                    const app = resolveApp(args, aliases, defaultAppId);
+                    await omni.aiApps.stop(app.appId);
                     state.active = false;
-                    state.lastMessage = 'Đã gửi lệnh dừng';
+                    state.lastMessage = `Đã gửi lệnh dừng ${app.alias}`;
                     await telegram.sendMessage(chatId, [
                         '<b>Đã gửi lệnh dừng</b>',
-                        `AI App: ${code(appId)}`,
+                        `Alias: ${code(app.alias)}`,
+                        `AI App: ${code(app.appId)}`,
                     ].join('\n'));
                     continue;
                 }
@@ -245,23 +326,24 @@ async function main() {
                         await telegram.sendMessage(chatId, [
                             '<b>Bot đang bận</b>',
                             `Dùng ${code('/status')} để xem trạng thái.`,
-                            `Dùng ${code('/stop')} nếu cần dừng AI App.`,
+                            `Dùng ${code('/stop')} nếu cần dừng workflow đang chạy.`,
                         ].join('\n'));
                         continue;
                     }
                     const args = parseArgs(text);
+                    const app = resolveApp(args, aliases, defaultAppId);
                     const profiles = parseProfiles(args);
                     if (profiles.length === 0)
                         profiles.push(defaultProfileId);
                     const delaySeconds = parsePositiveInt(args.delay, defaultDelaySeconds) || defaultDelaySeconds;
                     state.command = text;
-                    void runAiAppForProfiles(telegram, chatId, omni, appId, profiles, delaySeconds, state);
+                    void runAiAppForProfiles(telegram, chatId, omni, app, profiles, delaySeconds, state);
                     continue;
                 }
                 await telegram.sendMessage(chatId, [
                     '<b>Không hiểu lệnh</b>',
                     '',
-                    helpText(),
+                    helpText(defaultAppId),
                 ].join('\n'));
             }
         }
