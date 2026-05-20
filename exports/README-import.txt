@@ -1,6 +1,8 @@
 Files:
 - khaihoan-derma-rank-qa.aiapp.json
 - khaihoan-derma-rank-qa.js
+- profile-warmup-random.aiapp.json
+- profile-warmup-random.js
 
 Recommended import:
 1. Open Omnilogin.
@@ -18,3 +20,9 @@ What it does:
 Note:
 Omnilogin's "Quy trinh tu dong > Nhap file" workflow-package format is private in the desktop app.
 If that dialog rejects this JSON, use the .js file in AI Coding by creating a new script and pasting/importing its content.
+
+Profile warmup flow:
+- App id: profile-warmup-random
+- Telegram alias: nuoi
+- Example: /run app=nuoi profiles=1,2 delay=60 close=1
+- Randomly mixes Google search/read, YouTube watch, news reading, direct browsing, scrolling, light link clicks, and page health reloads.

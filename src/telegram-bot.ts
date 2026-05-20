@@ -54,6 +54,11 @@ const DEFAULT_APP_ALIASES: AppAlias[] = [
     appId: DEFAULT_APP_ID,
     name: 'Khai Hoàn Derma Rank QA',
   },
+  {
+    alias: 'nuoi',
+    appId: 'profile-warmup-random',
+    name: 'Profile Warmup Random',
+  },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
@@ -234,6 +239,25 @@ async function loadProfilesByNameOrId(omni: OmniLogin) {
 async function resolveProfileRefs(omni: OmniLogin, refs: string[], defaultProfileRef: string) {
   const requested = refs.length > 0 ? refs : [defaultProfileRef];
   const profiles = await loadProfilesByNameOrId(omni);
+  if (requested.some((ref) => ref.trim().toLowerCase() === 'all')) {
+    const allProfileIds = profiles
+      .slice()
+      .sort((left, right) => {
+        const leftNumber = Number(left.name);
+        const rightNumber = Number(right.name);
+        if (Number.isInteger(leftNumber) && Number.isInteger(rightNumber)) return leftNumber - rightNumber;
+        return left.id - right.id;
+      })
+      .map((profile) => profile.id);
+
+    return {
+      requested,
+      resolved: allProfileIds,
+      unresolved: [],
+      profiles,
+    };
+  }
+
   const resolved: number[] = [];
   const unresolved: string[] = [];
 
@@ -448,18 +472,35 @@ class TelegramClient {
 
 function helpText(defaultAppId: string) {
   return [
-    '<b>Bot điều khiển Omnilogin</b>',
+    '<b>Bot Omnilogin - hướng dẫn nhanh</b>',
     '',
-    '<b>Lệnh hỗ trợ</b>',
-    `${code('/list')} - xem danh sách workflow/AI App`,
-    `${code('/run profile=1')} - chạy workflow mặc định theo tên profile hoặc ID`,
-    `${code('/run app=derma profile=1')} - chạy workflow theo alias`,
-    `${code('/run app=derma profiles=1,2 delay=60')} - chạy nhiều profile theo tên hoặc ID, nghỉ giữa mỗi profile`,
-    `${code('/run app=derma profiles=1,2 wait=180 delay=60 close=1')} - chờ mỗi profile chạy xong rồi chuyển profile`,
-    `${code('/status')} - xem trạng thái hiện tại`,
-    `${code('/stop')} - dừng workflow mặc định`,
-    `${code('/stop app=derma')} - dừng workflow theo alias`,
-    `${code('/help')} - xem hướng dẫn`,
+    '<b>1. Workflow đang có</b>',
+    `${code('derma')} - kiểm tra rank + lướt web Khải Hoàn Derma`,
+    `${code('nuoi')} - nuôi profile: Google, YouTube, đọc báo/web ngẫu nhiên`,
+    '',
+    '<b>2. Chạy 1 profile</b>',
+    `${code('/run app=derma profile=1')}`,
+    `${code('/run app=nuoi profile=1')}`,
+    '',
+    '<b>3. Chạy nhiều profile</b>',
+    `${code('/run app=nuoi profiles=1,2,3 delay=60 close=1')}`,
+    `${code('/run app=nuoi profiles=all delay=60 close=1')}`,
+    `${code('/run app=derma profiles=1,2,3 delay=60 close=1')}`,
+    '',
+    '<b>4. Ý nghĩa tham số</b>',
+    `${code('app=nuoi')} chọn workflow cần chạy`,
+    `${code('profile=1')} chạy 1 profile; có thể nhập tên profile hoặc ID`,
+    `${code('profiles=1,2,3')} chạy nhiều profile theo thứ tự`,
+    `${code('profiles=all')} chạy toàn bộ profile hiện có`,
+    `${code('delay=60')} nghỉ 60 giây sau khi xong 1 profile rồi mới chạy profile tiếp theo`,
+    `${code('close=1')} tự đóng profile sau khi chạy xong`,
+    `${code('close=0')} chạy xong vẫn để profile mở`,
+    '',
+    '<b>5. Theo dõi và dừng</b>',
+    `${code('/status')} xem bot đang chạy tới đâu`,
+    `${code('/stop')} dừng workflow đang chạy và đóng profile hiện tại nếu có`,
+    `${code('/list')} xem danh sách alias workflow`,
+    `${code('/help')} hoặc ${code('/start')} xem lại hướng dẫn này`,
     '',
     '<b>Workflow mặc định</b>',
     code(defaultAppId),
@@ -468,14 +509,17 @@ function helpText(defaultAppId: string) {
 
 function listText(aliases: AppAlias[], defaultAppId: string) {
   return [
-    '<b>Danh sách workflow/AI App có thể gọi</b>',
+    '<b>Danh sách workflow có thể gọi</b>',
     '',
-    ...aliases.map((item) => `${code(item.alias)} → ${code(item.appId)}\n${escapeHtml(item.name)}`),
+    ...aliases.map((item) => `${code(item.alias)} → ${code(item.appId)} - ${escapeHtml(item.name)}`),
     '',
-    '<b>Ví dụ</b>',
-    code('/run app=derma profile=1'),
-    code('/run app=derma profiles=1,2 delay=60'),
-    code('/run app=derma profiles=1,2 wait=180 delay=60 close=1'),
+    '<b>Lệnh hay dùng</b>',
+    code('/run app=nuoi profile=1 close=1'),
+    code('/run app=nuoi profiles=1,2,3 delay=60 close=1'),
+    code('/run app=nuoi profiles=all delay=60 close=1'),
+    code('/run app=derma profiles=1,2,3 delay=60 close=1'),
+    code('/status'),
+    code('/stop'),
     '',
     '<b>Workflow mặc định</b>',
     code(defaultAppId),
