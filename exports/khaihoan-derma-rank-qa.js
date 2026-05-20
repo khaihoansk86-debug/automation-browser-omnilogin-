@@ -424,14 +424,33 @@ async function readPageForDuration(minSeconds, maxSeconds) {
   };
 }
 
-async function openFirstReadableNewsResult(topResults, config) {
+function shuffleArray(items) {
+  const out = items.slice();
+  for (let index = out.length - 1; index > 0; index--) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const current = out[index];
+    out[index] = out[swapIndex];
+    out[swapIndex] = current;
+  }
+  return out;
+}
+
+async function openRandomReadableNewsResult(topResults, config) {
   const candidates = topResults
     .filter((result) => !isTargetHost(result.host, config.targetDomain))
     .filter((result) => /^https?:\/\//i.test(result.url))
     .slice(0, 6);
 
+  const shuffledCandidates = shuffleArray(candidates);
   const attempts = [];
-  for (const result of candidates) {
+  console.log('[news] top 6 candidates: ' + JSON.stringify(candidates.map((result) => ({
+    position: result.position,
+    host: result.host,
+    title: result.title,
+    url: cleanUrl(result.url),
+  }))));
+
+  for (const result of shuffledCandidates) {
     const url = cleanUrl(result.url);
     attempts.push({
       title: result.title,
@@ -440,7 +459,7 @@ async function openFirstReadableNewsResult(topResults, config) {
     });
 
     try {
-      console.log('[news] open direct candidate: ' + url);
+      console.log('[news] open random top-6 candidate directly: ' + url);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 18000 });
       await wait(1200 + Math.floor(Math.random() * 1400));
 
@@ -486,7 +505,7 @@ async function warmupNewsRead(config) {
       afterResultsMaxSeconds: 5,
     });
     const topResults = await extractGoogleResults();
-    const openResult = await openFirstReadableNewsResult(topResults, config);
+    const openResult = await openRandomReadableNewsResult(topResults, config);
     const newsResult = openResult.result;
 
     if (!newsResult) {
@@ -613,7 +632,16 @@ async function main() {
   });
   const topResults = await extractGoogleResults();
   const targetResult = topResults.find((result) => isTargetHost(result.host, config.targetDomain));
-  const siteAudit = await auditTargetSite(config, targetResult ? targetResult.url : config.targetBaseUrl);
+  const targetStartUrl = targetResult ? cleanUrl(targetResult.url) : cleanUrl(config.targetBaseUrl);
+  console.log(
+    '[derma] open target directly: ' +
+      JSON.stringify({
+        foundInGoogle: Boolean(targetResult),
+        rank: targetResult ? targetResult.position : null,
+        url: targetStartUrl,
+      }),
+  );
+  const siteAudit = await auditTargetSite(config, targetStartUrl);
 
   const output = {
     newsWarmup,
