@@ -1,13 +1,13 @@
 const DEFAULTS = {
-  sessionMinSeconds: 720,
-  sessionMaxSeconds: 1080,
-  taskMinSeconds: 90,
-  taskMaxSeconds: 180,
-  betweenTaskMinSeconds: 20,
-  betweenTaskMaxSeconds: 55,
+  sessionMinSeconds: 300,
+  sessionMaxSeconds: 360,
+  taskMinSeconds: 35,
+  taskMaxSeconds: 55,
+  betweenTaskMinSeconds: 6,
+  betweenTaskMaxSeconds: 12,
   taskCountMin: 3,
-  taskCountMax: 4,
-  maxTasks: 4,
+  taskCountMax: 3,
+  maxTasks: 3,
   exportPath: 'C:\\Users\\Admin\\Desktop\\profile-warmup-random-output.json',
 };
 
@@ -142,6 +142,91 @@ async function wait(ms) {
   await page.waitForTimeout(Math.max(0, Math.floor(ms)));
 }
 
+async function safeMouseMove(x, y, options) {
+  try {
+    await page.mouse.move(x, y, options);
+  } catch {
+    // Best-effort humanization only.
+  }
+}
+
+async function safeMouseWheel(deltaX, deltaY) {
+  try {
+    await page.mouse.wheel(deltaX, deltaY);
+  } catch {
+    // Some bridge versions return void or fail transiently; browsing should continue.
+  }
+}
+
+async function safeMouseClick(x, y) {
+  try {
+    await page.mouse.click(x, y);
+    return true;
+  } catch (error) {
+    console.log('[mouse] coordinate click failed:', error.message || String(error));
+    return false;
+  }
+}
+
+async function safeKeyboardPress(key) {
+  try {
+    await page.keyboard.press(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function safeLocatorWait(locator, options) {
+  try {
+    await locator.waitFor(options);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function safeLocatorClick(locator) {
+  try {
+    await locator.click();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function safeValue(read, fallback) {
+  try {
+    return await Promise.resolve(read());
+  } catch {
+    return fallback;
+  }
+}
+
+async function safePageUrl(fallback = '') {
+  return safeValue(() => page.url(), fallback);
+}
+
+async function safePageTitle(fallback = '') {
+  return safeValue(() => page.title(), fallback);
+}
+
+async function safeIsVisible(locator) {
+  return Boolean(await safeValue(() => locator.isVisible(), false));
+}
+
+async function safeCount(locator) {
+  return Number(await safeValue(() => locator.count(), 0)) || 0;
+}
+
+async function safeText(locator, fallback = '') {
+  return safeValue(() => locator.innerText(), fallback);
+}
+
+async function safeAttribute(locator, name, fallback = '') {
+  return safeValue(() => locator.getAttribute(name), fallback);
+}
+
 async function waitRandom(label, minSeconds, maxSeconds) {
   const seconds = randomInt(minSeconds, Math.max(minSeconds, maxSeconds));
   console.log(label + ' wait ' + seconds + 's');
@@ -163,7 +248,7 @@ async function isVisibleSafe(locator) {
 async function moveMouseNaturally() {
   const x = randomInt(90, 1180);
   const y = randomInt(90, 640);
-  await page.mouse.move(x, y, { steps: randomInt(8, 24) }).catch(() => undefined);
+  await safeMouseMove(x, y, { steps: randomInt(8, 24) });
 }
 
 async function maybeAcceptConsent() {
@@ -179,8 +264,8 @@ async function maybeAcceptConsent() {
   ];
   for (const text of texts) {
     const button = page.locator('button, [role="button"]').filter({ hasText: text }).first();
-    if ((await button.count()) > 0 && (await button.isVisible()).catch(() => false)) {
-      await button.click().catch(() => undefined);
+    if ((await safeCount(button)) > 0 && (await safeIsVisible(button))) {
+      await safeLocatorClick(button);
       await wait(800);
       return true;
     }
@@ -189,9 +274,9 @@ async function maybeAcceptConsent() {
 }
 
 async function inspectPageHealth() {
-  const url = await page.url().catch(() => '');
-  const title = await page.title().catch(() => '');
-  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const url = await safePageUrl('');
+  const title = await safePageTitle('');
+  const bodyText = await safeText(page.locator('body'), '');
   const dom = await page.evaluate(() => {
     const body = document.body;
     const root = document.documentElement;
@@ -285,7 +370,7 @@ async function scrollRead(label, minSeconds, maxSeconds, deadline) {
   while (Date.now() - startedAt < targetMs && remainingMs(deadline) > 5000) {
     if (Math.random() < 0.65) await moveMouseNaturally();
     const direction = Math.random() < 0.82 ? 1 : -1;
-    await page.mouse.wheel(0, direction * randomInt(260, 720)).catch(() => undefined);
+    await safeMouseWheel(0, direction * randomInt(260, 720));
     scrolls++;
     await wait(randomInt(2600, 7600));
 
@@ -302,8 +387,8 @@ async function scrollRead(label, minSeconds, maxSeconds, deadline) {
     elapsedMs: Date.now() - startedAt,
     scrolls,
     clicks,
-    finalUrl: await page.url().catch(() => ''),
-    title: await page.title().catch(() => ''),
+    finalUrl: await safePageUrl(''),
+    title: await safePageTitle(''),
   };
 }
 
@@ -344,7 +429,7 @@ async function clickReadableLink(label, deadline, options = {}) {
       .slice(0, 60);
   }).catch(() => []);
 
-  const currentHost = await page.url().then((url) => normalizeHost(new URL(url).hostname)).catch(() => '');
+  const currentHost = await safeValue(async () => normalizeHost(new URL(await safePageUrl('')).hostname), '');
   const candidates = shuffle(
     links
       .filter((item) => item.text.length >= minTextLength || force)
@@ -397,7 +482,7 @@ async function openReadableContentFromCurrent(label, deadline) {
     }).catch(() => false);
     if (opened) return true;
 
-    await page.mouse.wheel(0, randomInt(420, 820)).catch(() => undefined);
+    await safeMouseWheel(0, randomInt(420, 820));
     await wait(randomInt(900, 1600));
   }
 
@@ -405,9 +490,9 @@ async function openReadableContentFromCurrent(label, deadline) {
 }
 
 async function getGoogleCaptchaState() {
-  const url = await page.url().catch(() => '');
-  const title = await page.title().catch(() => '');
-  const text = await page.locator('body').innerText().catch(() => '');
+  const url = await safePageUrl('');
+  const title = await safePageTitle('');
+  const text = await safeText(page.locator('body'), '');
   const haystack = (url + '\n' + title + '\n' + text.slice(0, 1500)).toLowerCase();
   return {
     detected:
@@ -505,7 +590,7 @@ async function openGoogleResult(result, deadline) {
 
   for (const selector of selectors) {
     const link = page.locator(selector).first();
-    if ((await link.count()) === 0 || !(await link.isVisible()).catch(() => false)) continue;
+    if ((await safeCount(link)) === 0 || !(await safeIsVisible(link))) continue;
     try {
       console.log('[google] open result: ' + result.title + ' | ' + result.url);
       await link.scrollIntoViewIfNeeded();
@@ -529,7 +614,7 @@ async function taskGoogleBrowse(config, deadline) {
   await searchGoogle(keyword, deadline);
 
   for (let index = 0; index < randomInt(1, 3); index++) {
-    await page.mouse.wheel(0, randomInt(360, 760)).catch(() => undefined);
+    await safeMouseWheel(0, randomInt(360, 760));
     await wait(randomInt(900, 1800));
   }
 
@@ -566,7 +651,14 @@ async function searchYoutube(keyword, deadline) {
   const url = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(keyword);
   await gotoUsable(url, '[youtube] search', deadline);
   await maybeAcceptConsent();
-  await page.locator('a[href*="/watch?v="], ytd-video-renderer').first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => undefined);
+  await safeLocatorWait(
+    page.locator('ytd-video-renderer, a#video-title, a#thumbnail[href*="/watch?v="], a[href*="/watch?v="]').first(),
+    { state: 'visible', timeout: 30000 },
+  );
+  for (let index = 0; index < randomInt(1, 3); index++) {
+    await safeMouseWheel(0, randomInt(220, 520));
+    await wait(randomInt(700, 1400));
+  }
   await wait(randomInt(1800, 3500));
 }
 
@@ -576,34 +668,54 @@ async function openYoutubeVideo(deadline) {
     console.log('[youtube] direct video fallback (' + reason + '): ' + directVideo);
     await gotoUsable(directVideo, '[youtube] direct fallback video', deadline);
     for (let waitIndex = 0; waitIndex < 10; waitIndex++) {
-      const url = await page.url().catch(() => '');
+      const url = await safePageUrl('');
       if (url.includes('/watch')) {
         await wait(randomInt(2500, 4500));
         return { title: 'direct fallback video', url, openedBy: 'directFallback' };
       }
       await wait(700);
     }
-    return { title: 'direct fallback attempted', url: await page.url().catch(() => directVideo), openedBy: 'directFallback' };
+    return { title: 'direct fallback attempted', url: await safePageUrl(directVideo), openedBy: 'directFallback' };
   };
 
-  for (let scroll = 0; scroll < 3; scroll++) {
+  const waitForYoutubeWatchPage = async (label) => {
+    for (let waitIndex = 0; waitIndex < 18; waitIndex++) {
+      const url = await safePageUrl('');
+      if (url.includes('/watch')) {
+        await ensurePageUsable(label, deadline);
+        return url;
+      }
+      await wait(700);
+    }
+    return '';
+  };
+
+  for (let scroll = 0; scroll < 4; scroll++) {
     const candidates = await page.evaluate(() => {
       const seen = new Set();
-      return Array.from(document.querySelectorAll('a[href*="/watch?v="]'))
+      const anchors = Array.from(document.querySelectorAll(
+        'ytd-video-renderer a#thumbnail[href*="/watch?v="], ytd-video-renderer a#video-title[href*="/watch?v="], a#thumbnail[href*="/watch?v="], a#video-title[href*="/watch?v="], a[href*="/watch?v="]',
+      ));
+      return anchors
         .map((anchor) => {
-          const rect = anchor.getBoundingClientRect();
-          const href = anchor.href || '';
-          const rawHref = anchor.getAttribute('href') || '';
+          const renderer = anchor.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer');
+          const clickTarget = renderer?.querySelector('a#thumbnail[href*="/watch?v="], a#video-title[href*="/watch?v="]') || anchor;
+          const rect = clickTarget.getBoundingClientRect();
+          const href = anchor.href || clickTarget.href || '';
+          const rawHref = anchor.getAttribute('href') || clickTarget.getAttribute('href') || '';
           const title =
+            renderer?.querySelector('#video-title')?.textContent?.trim().replace(/\s+/g, ' ') ||
             anchor.getAttribute('title') ||
             (anchor.textContent || '').trim().replace(/\s+/g, ' ') ||
-            anchor.closest('ytd-video-renderer')?.textContent?.trim().replace(/\s+/g, ' ') ||
+            renderer?.textContent?.trim().replace(/\s+/g, ' ') ||
             '';
           return {
             href,
             rawHref,
             title: title.slice(0, 160),
-            visible: rect.width > 40 && rect.height > 10 && rect.bottom > 0 && rect.top < window.innerHeight,
+            x: Math.round(rect.left + rect.width / 2),
+            y: Math.round(rect.top + rect.height / 2),
+            visible: rect.width > 60 && rect.height > 35 && rect.bottom > 0 && rect.top < window.innerHeight,
           };
         })
         .filter((item) => item.href.includes('/watch?v=') && item.visible)
@@ -618,38 +730,35 @@ async function openYoutubeVideo(deadline) {
 
     for (const item of shuffle(candidates).slice(0, 8)) {
       try {
-        const selectors = [
-          item.rawHref ? 'a[href="' + cssAttrValue(item.rawHref) + '"]' : '',
-          item.href ? 'a[href="' + cssAttrValue(item.href) + '"]' : '',
-        ].filter(Boolean);
-        let video = null;
-        for (const selector of selectors) {
-          const candidate = page.locator(selector).first();
-          if ((await candidate.count()) > 0 && (await candidate.isVisible()).catch(() => false)) {
-            video = candidate;
-            break;
-          }
-        }
-        if (!video) continue;
         console.log('[youtube] click video: ' + (item.title || item.href));
-        await video.scrollIntoViewIfNeeded();
-        await wait(randomInt(600, 1200));
-        await video.click();
-        let openedUrl = await page.url().catch(() => '');
-        for (let waitIndex = 0; waitIndex < 12 && !openedUrl.includes('/watch'); waitIndex++) {
-          await wait(700);
-          openedUrl = await page.url().catch(() => '');
+        if (item.x > 0 && item.y > 0) {
+          await safeMouseMove(item.x, item.y, { steps: randomInt(8, 18) });
+          await wait(randomInt(400, 900));
+          if (!(await safeMouseClick(item.x, item.y))) continue;
+        } else {
+          const selector = item.rawHref ? 'a[href="' + cssAttrValue(item.rawHref) + '"]' : 'a[href="' + cssAttrValue(item.href) + '"]';
+          const video = page.locator(selector).first();
+          if ((await safeCount(video)) === 0 || !(await safeIsVisible(video))) continue;
+          await video.scrollIntoViewIfNeeded();
+          await wait(randomInt(500, 1000));
+          await video.click();
         }
-        if (openedUrl.includes('/watch')) {
-          await ensurePageUsable('[youtube] video after click', deadline);
-          return { title: item.title, url: openedUrl, openedBy: 'click' };
+        const openedUrl = await waitForYoutubeWatchPage('[youtube] video after click');
+        if (openedUrl) return { title: item.title, url: openedUrl, openedBy: 'click' };
+
+        console.log('[youtube] click did not open watch page, goto video: ' + item.href);
+        await gotoUsable(item.href, '[youtube] click fallback goto video', deadline);
+        await wait(randomInt(600, 1200));
+        const fallbackOpenedUrl = await waitForYoutubeWatchPage('[youtube] video after click fallback');
+        if (fallbackOpenedUrl) {
+          return { title: item.title, url: fallbackOpenedUrl, openedBy: 'clickFallbackGoto' };
         }
       } catch (error) {
         console.log('[youtube] video click failed:', error.message || String(error));
       }
     }
 
-    await page.mouse.wheel(0, randomInt(620, 980)).catch(() => undefined);
+    await safeMouseWheel(0, randomInt(620, 980));
     await wait(randomInt(1200, 2200));
   }
 
@@ -661,21 +770,29 @@ async function openYoutubeVideo(deadline) {
 
   for (const selector of selectors) {
     const videos = page.locator(selector);
-    const count = Math.min(await videos.count().catch(() => 0), 12);
+    const count = Math.min(await safeCount(videos), 12);
     if (count === 0) continue;
 
     const order = shuffle(Array.from({ length: count }, (_, index) => index)).slice(0, 6);
     for (const index of order) {
       const video = videos.nth(index);
-      if (!(await video.isVisible()).catch(() => false)) continue;
-      const title = (await video.innerText().catch(() => '')).trim().replace(/\s+/g, ' ').slice(0, 140);
+      if (!(await safeIsVisible(video))) continue;
+      const title = (await safeText(video, '')).trim().replace(/\s+/g, ' ').slice(0, 140);
       console.log('[youtube] open video: ' + title);
       await video.scrollIntoViewIfNeeded();
       await wait(randomInt(500, 1100));
       await video.click();
-      await wait(randomInt(3500, 6000));
-      await ensurePageUsable('[youtube] video', deadline);
-      return { title, index };
+      const openedUrl = await waitForYoutubeWatchPage('[youtube] video');
+      if (openedUrl) return { title, index, url: openedUrl, openedBy: 'selectorClick' };
+
+      const href = await safeAttribute(video, 'href', '');
+      if (href) {
+        const videoUrl = href.startsWith('http') ? href : 'https://www.youtube.com' + href;
+        console.log('[youtube] selector click did not open watch, goto: ' + videoUrl);
+        await gotoUsable(videoUrl, '[youtube] selector fallback goto', deadline);
+        const fallbackOpenedUrl = await waitForYoutubeWatchPage('[youtube] selector fallback watch');
+        if (fallbackOpenedUrl) return { title, index, url: fallbackOpenedUrl, openedBy: 'selectorFallbackGoto' };
+      }
     }
   }
 
@@ -693,7 +810,7 @@ async function openYoutubeVideo(deadline) {
     console.log('[youtube] goto video fallback: ' + (fallback.title || fallback.href));
     await gotoUsable(fallback.href, '[youtube] fallback video', deadline);
     await wait(randomInt(3500, 6000));
-    const url = await page.url().catch(() => fallback.href);
+    const url = await safePageUrl(fallback.href);
     if (url.includes('/watch')) return { title: fallback.title, url, openedBy: 'goto' };
   }
 
@@ -701,33 +818,33 @@ async function openYoutubeVideo(deadline) {
 }
 
 async function watchYoutubeVideo(config, deadline) {
-  const targetMs = randomInt(Math.max(90, config.taskMinSeconds), Math.max(130, config.taskMaxSeconds + 70)) * 1000;
+  const targetMs = randomInt(Math.max(35, config.taskMinSeconds), Math.max(55, config.taskMaxSeconds + 15)) * 1000;
   const startedAt = Date.now();
   let actions = 0;
   let scrolls = 0;
-  let currentUrl = await page.url().catch(() => '');
+  let currentUrl = await safePageUrl('');
   if (!currentUrl.includes('/watch')) {
     const directVideo = pick(YOUTUBE_FALLBACK_VIDEO_URLS);
     console.log('[youtube] watch page missing, force goto: ' + directVideo);
     await gotoUsable(directVideo, '[youtube] forced watch page', deadline);
     await wait(randomInt(2500, 4500));
-    currentUrl = await page.url().catch(() => '');
+    currentUrl = await safePageUrl('');
   }
 
-  await page.locator('video, .html5-video-player, #movie_player').first().click().catch(() => undefined);
+  await safeLocatorClick(page.locator('video, .html5-video-player, #movie_player').first());
   await wait(randomInt(900, 1700));
 
   while (Date.now() - startedAt < targetMs && remainingMs(deadline) > 8000) {
     if (Math.random() < 0.25) await moveMouseNaturally();
     if (Math.random() < 0.50) {
       const direction = Math.random() < 0.82 ? 1 : -1;
-      await page.mouse.wheel(0, direction * randomInt(260, 760)).catch(() => undefined);
+      await safeMouseWheel(0, direction * randomInt(260, 760));
       scrolls++;
       actions++;
     } else if (Math.random() < 0.10) {
-      await page.keyboard.press('k').catch(() => undefined);
+      await safeKeyboardPress('k');
       await wait(randomInt(500, 1200));
-      await page.keyboard.press('k').catch(() => undefined);
+      await safeKeyboardPress('k');
       actions++;
     }
     await wait(randomInt(8000, 18000));
@@ -737,8 +854,8 @@ async function watchYoutubeVideo(config, deadline) {
     elapsedMs: Date.now() - startedAt,
     actions,
     scrolls,
-    finalUrl: await page.url().catch(() => ''),
-    title: await page.title().catch(() => ''),
+    finalUrl: await safePageUrl(''),
+    title: await safePageTitle(''),
   };
 }
 
@@ -747,12 +864,12 @@ async function taskYoutubeWatch(config, deadline) {
   console.log('[task] youtube watch: ' + keyword);
   await searchYoutube(keyword, deadline);
   let video = await openYoutubeVideo(deadline);
-  const currentUrl = await page.url().catch(() => '');
+  const currentUrl = await safePageUrl('');
   if (!currentUrl.includes('/watch')) {
     const fallback = pick(YOUTUBE_FALLBACK_VIDEO_URLS);
     console.log('[youtube] final force watch fallback: ' + fallback);
     await gotoUsable(fallback, '[youtube] final force fallback', deadline);
-    video = { title: 'final force fallback', url: await page.url().catch(() => fallback), openedBy: 'finalForceFallback' };
+    video = { title: 'final force fallback', url: await safePageUrl(fallback), openedBy: 'finalForceFallback' };
   }
   const watchStats = await watchYoutubeVideo(config, deadline);
   return { type: 'youtubeWatch', keyword, video, watchStats };
@@ -835,8 +952,8 @@ async function main() {
         order: index + 1,
         elapsedMs: Date.now() - startedAt,
         error: message,
-        url: await page.url().catch(() => ''),
-        title: await page.title().catch(() => ''),
+        url: await safePageUrl(''),
+        title: await safePageTitle(''),
       });
       if (message.includes('GOOGLE_CAPTCHA_DETECTED')) break;
     }
@@ -854,8 +971,8 @@ async function main() {
     sessionSeconds,
     taskPlan,
     actions,
-    finalUrl: await page.url().catch(() => ''),
-    title: await page.title().catch(() => ''),
+    finalUrl: await safePageUrl(''),
+    title: await safePageTitle(''),
     finishedAt: new Date().toISOString(),
   };
 

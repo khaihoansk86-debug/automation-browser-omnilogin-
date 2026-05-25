@@ -1,12 +1,13 @@
 const DEFAULTS = {
   newsKeywordFilePath: 'C:\\Users\\Admin\\Desktop\\key_derma\\keybao.txt',
-  newsReadMinSeconds: 30,
-  newsReadMaxSeconds: 60,
+  newsReadMinSeconds: 90,
+  newsReadMaxSeconds: 180,
   keywordFilePath: 'C:\\Users\\Admin\\Desktop\\key_derma\\keyderma.txt',
   keyword: 'Omnilogin',
   targetDomain: 'khaihoanderma.com',
   targetBaseUrl: 'https://khaihoanderma.com/',
-  siteQaMaxSeconds: 90,
+  siteQaMinSeconds: 240,
+  siteQaMaxSeconds: 420,
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\khaihoan-derma-rank-qa-output.json',
 };
 
@@ -1203,7 +1204,7 @@ async function warmupNewsRead(config) {
       };
     }
 
-    const maxNewsDeadline = Date.now() + Math.min(65000, Math.max(35000, Number(config.newsReadMaxSeconds || 60) * 1000));
+    const maxNewsDeadline = Date.now() + Math.min(220000, Math.max(90000, Number(config.newsReadMaxSeconds || 180) * 1000));
     const readStats = await readPageWithinBudget(
       config.newsReadMinSeconds,
       config.newsReadMaxSeconds,
@@ -1237,8 +1238,10 @@ async function warmupNewsRead(config) {
 async function auditTargetSite(config, startUrl) {
   console.log('[step4] audit target site ' + new Date().toISOString());
   const startedAt = Date.now();
-  const maxDurationMs = Math.max(10, Math.min(90, Number(config.siteQaMaxSeconds || 90))) * 1000;
-  const deadline = startedAt + maxDurationMs;
+  const minDurationMs = Math.max(120, Number(config.siteQaMinSeconds || 240)) * 1000;
+  const maxDurationLimitMs = Math.max(minDurationMs, Math.min(600, Number(config.siteQaMaxSeconds || 420)) * 1000);
+  const targetDurationMs = minDurationMs + Math.floor(Math.random() * (maxDurationLimitMs - minDurationMs + 1));
+  const deadline = startedAt + targetDurationMs;
   const visitedPages = [];
   const visitedSet = new Set();
 
@@ -1269,10 +1272,10 @@ async function auditTargetSite(config, startUrl) {
     );
   }
 
-  await waitWithinBudget(1200 + Math.floor(Math.random() * 1200), deadline);
+  await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
   await maybeInspectProductImages('[audit] first product image', deadline);
   await scrollToRelatedProducts();
-  const firstReadStats = await readPageWithinBudget(4, 7, deadline);
+  const firstReadStats = await readPageWithinBudget(35, 70, deadline);
   visitedPages.push({
     ...(await auditCurrentPage(config.targetDomain)),
     readStats: firstReadStats,
@@ -1284,14 +1287,14 @@ async function auditTargetSite(config, startUrl) {
     .concat(pickAuditLinks(links, await page.url(), visitedSet))
     .filter((link, index, arr) => arr.indexOf(link) === index);
   for (const link of auditLinks) {
-    if (remainingMs(deadline) <= 5000 || visitedPages.length >= 6) break;
+    if (remainingMs(deadline) <= 20000 || visitedPages.length >= 6) break;
     const cleanLink = cleanUrl(link);
     if (visitedSet.has(cleanLink)) continue;
     visitedSet.add(cleanLink);
     await clickOrGotoInternalLink(cleanLink, deadline);
-    await waitWithinBudget(1000 + Math.floor(Math.random() * 1200), deadline);
+    await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
     await maybeInspectProductImages('[audit] related product image', deadline);
-    const readStats = await readPageWithinBudget(6, 12, deadline);
+    const readStats = await readPageWithinBudget(35, 75, deadline);
     visitedPages.push({
       ...(await auditCurrentPage(config.targetDomain)),
       readStats,
@@ -1300,7 +1303,7 @@ async function auditTargetSite(config, startUrl) {
 
   return {
     startUrl: cleanUrl(startUrl),
-    maxDurationMs,
+    targetDurationMs,
     elapsedMs: Date.now() - startedAt,
     stoppedByBudget: remainingMs(deadline) <= 5000,
     visitedPages,
@@ -1316,12 +1319,13 @@ async function main() {
     keyword: String(param('defaultKeyword') || DEFAULTS.keyword),
     targetDomain: String(param('targetDomain') || DEFAULTS.targetDomain),
     targetBaseUrl: String(param('targetBaseUrl') || DEFAULTS.targetBaseUrl),
+    siteQaMinSeconds: Number(param('siteQaMinSeconds') || DEFAULTS.siteQaMinSeconds),
     siteQaMaxSeconds: Number(param('siteQaMaxSeconds') || DEFAULTS.siteQaMaxSeconds),
     exportPath: String(param('exportPath') || DEFAULTS.exportPath),
   };
 
   const newsWarmup = await warmupNewsRead(config);
-  await waitRandomSeconds('[phase] before derma', 3, 8);
+  await waitRandomSeconds('[phase] before derma', 12, 25);
   const keyword = await getKeyword(config);
   await searchGoogle(keyword, {
     label: '[derma] after search',
@@ -1346,7 +1350,7 @@ async function main() {
       searchUrl: await page.url(),
       allowFallback: true,
     });
-    await wait(1000 + Math.floor(Math.random() * 1000));
+    await wait(3000 + Math.floor(Math.random() * 2500));
   }
   const siteAudit = await auditTargetSite(config, targetResult ? await page.url() : targetStartUrl);
 
