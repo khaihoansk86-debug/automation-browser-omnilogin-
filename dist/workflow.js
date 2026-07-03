@@ -174,33 +174,38 @@ async function step4_clickTargetGoogleResult(page, targetResult) {
     await waitUntilSearchResultsReady(page);
     const anchors = await page.locator('a[href]').all();
     for (const anchor of anchors.slice(0, 80)) {
-        const href = await anchor.getAttribute('href');
-        if (!href)
-            continue;
-        const decodedHref = decodeGoogleHref(href);
-        if (decodedHref !== targetResult.url && href !== targetResult.clickUrl)
-            continue;
-        if (!(await anchor.isVisible()))
-            continue;
-        await anchor.scrollIntoViewIfNeeded();
-        await anchor.click();
-        await waitUntilState('target result opened', async () => {
-            const url = await page.url();
-            let host = '';
-            try {
-                host = new URL(url).hostname;
-            }
-            catch {
-                host = '';
-            }
-            return {
-                ok: isTargetHost(host),
-                url,
-                title: await page.title(),
-            };
-        }, 45_000);
-        console.log(`[step4-click] done ${new Date().toISOString()}`);
-        return;
+        try {
+            const href = await anchor.getAttribute('href');
+            if (!href)
+                continue;
+            const decodedHref = decodeGoogleHref(href);
+            if (decodedHref !== targetResult.url && href !== targetResult.clickUrl)
+                continue;
+            if (!(await anchor.isVisible()))
+                continue;
+            await anchor.scrollIntoViewIfNeeded();
+            await anchor.click();
+            await waitUntilState('target result opened', async () => {
+                const url = await page.url();
+                let host = '';
+                try {
+                    host = new URL(url).hostname;
+                }
+                catch {
+                    host = '';
+                }
+                return {
+                    ok: isTargetHost(host),
+                    url,
+                    title: await page.title(),
+                };
+            }, 45_000);
+            console.log(`[step4-click] done ${new Date().toISOString()}`);
+            return;
+        }
+        catch (staleErr) {
+            console.log(`[step4-click] stale link elements skipped: ${staleErr.message}`);
+        }
     }
     throw new Error(`Khong tim thay link Google de bam cho ket qua: ${targetResult.url}`);
 }
@@ -281,29 +286,34 @@ async function clickOrGotoInternalLink(page, link, deadline) {
     const currentUrl = await page.url();
     const anchors = await page.locator('a[href]').all();
     for (const anchor of anchors.slice(0, 160)) {
-        const href = await anchor.getAttribute('href');
-        if (!href)
-            continue;
-        let anchorUrl = '';
         try {
-            anchorUrl = cleanAuditUrl(resolveHref(href, currentUrl));
+            const href = await anchor.getAttribute('href');
+            if (!href)
+                continue;
+            let anchorUrl = '';
+            try {
+                anchorUrl = cleanAuditUrl(resolveHref(href, currentUrl));
+            }
+            catch {
+                continue;
+            }
+            if (anchorUrl !== targetUrl || !(await anchor.isVisible()))
+                continue;
+            await anchor.scrollIntoViewIfNeeded();
+            await anchor.click();
+            await waitUntilState('internal link opened', async () => {
+                const url = await page.url();
+                return {
+                    ok: cleanAuditUrl(url) === targetUrl,
+                    url,
+                    title: await page.title(),
+                };
+            }, Math.min(20_000, remainingMs(deadline)));
+            return;
         }
-        catch {
-            continue;
+        catch (staleErr) {
+            console.log(`[audit] stale link elements skipped: ${staleErr.message}`);
         }
-        if (anchorUrl !== targetUrl || !(await anchor.isVisible()))
-            continue;
-        await anchor.scrollIntoViewIfNeeded();
-        await anchor.click();
-        await waitUntilState('internal link opened', async () => {
-            const url = await page.url();
-            return {
-                ok: cleanAuditUrl(url) === targetUrl,
-                url,
-                title: await page.title(),
-            };
-        }, Math.min(20_000, remainingMs(deadline)));
-        return;
     }
     await page.goto(targetUrl, {
         waitUntil: 'domcontentloaded',

@@ -1,12 +1,22 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { OmniLogin } from '@omnilogin/sdk';
+import { loadGscConfig, syncGscKeywordPool } from './gsc.js';
 
 type TelegramUpdate = {
   update_id: number;
   message?: {
     message_id: number;
     text?: string;
+    caption?: string;
+    document?: {
+      file_id: string;
+      file_name?: string;
+      mime_type?: string;
+      file_size?: number;
+    };
     chat: {
       id: number;
     };
@@ -32,6 +42,11 @@ type MktProxyConfig = {
   rotateMode: 'current' | 'new';
 };
 
+type GscSyncConfig = {
+  enabled: boolean;
+  syncBeforeRun: boolean;
+};
+
 type ProfileWaitResult = 'completed' | 'captcha' | 'stopped';
 
 type RunState = {
@@ -45,6 +60,7 @@ type RunState = {
   profileRunSeconds?: number;
   closeAfterRun?: boolean;
   lastMessage?: string;
+  childProcess?: any;
 };
 
 const DEFAULT_APP_ID = 'khaihoan-derma-rank-qa';
@@ -58,6 +74,11 @@ const DEFAULT_APP_ALIASES: AppAlias[] = [
     alias: 'nuoi',
     appId: 'profile-warmup-random',
     name: 'Profile Warmup Random',
+  },
+  {
+    alias: 'index',
+    appId: 'index-url-khaihoanderma',
+    name: 'Index URL Khai Hoàn Derma',
   },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
@@ -92,6 +113,26 @@ function parsePositiveInt(value: string | undefined, fallback?: number) {
   return fallback;
 }
 
+interface DelayRange {
+  min: number;
+  max: number;
+}
+
+function parseDelayRange(value: string | undefined, defaultVal: number): DelayRange {
+  if (!value) return { min: defaultVal, max: defaultVal };
+  const parts = value.split(/[-,]/).map((p) => parseInt(p.trim(), 10));
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    const min = Math.min(parts[0], parts[1]);
+    const max = Math.max(parts[0], parts[1]);
+    return { min, max };
+  }
+  const parsed = parseInt(value, 10);
+  if (!isNaN(parsed) && parsed > 0) {
+    return { min: parsed, max: parsed };
+  }
+  return { min: defaultVal, max: defaultVal };
+}
+
 function parseBoolean(value: string | undefined, fallback: boolean) {
   if (value === undefined) return fallback;
   const normalized = value.trim().toLowerCase();
@@ -122,10 +163,29 @@ function parseProfileRefs(args: Record<string, string>) {
   const raw = args.profiles || args.profile;
   if (!raw) return [];
 
-  return raw
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const refs: string[] = [];
+  for (const part of raw.split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    // Check if it's a range like 37-66
+    const rangeMatch = trimmed.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      if (start <= end) {
+        for (let i = start; i <= end; i++) {
+          refs.push(String(i));
+        }
+      } else {
+        for (let i = start; i >= end; i--) {
+          refs.push(String(i));
+        }
+      }
+    } else {
+      refs.push(trimmed);
+    }
+  }
+  return refs;
 }
 
 function escapeHtml(value: unknown) {
@@ -460,50 +520,110 @@ class TelegramClient {
     });
   }
 
-  sendMessage(chatId: number, text: string) {
-    return this.request('sendMessage', {
+  async getFile(fileId: string) {
+    return this.request<{ file_path: string }>('getFile', { file_id: fileId });
+  }
+
+  async downloadFile(filePath: string): Promise<string> {
+    const response = await fetch(`https://api.telegram.org/file/bot${this.token}/${filePath}`);
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+    return await response.text();
+  }
+
+  sendMessage(chatId: number, text: string, replyMarkup?: Record<string, unknown>) {
+    return this.request<{ message_id: number }>('sendMessage', {
       chat_id: chatId,
       text,
       parse_mode: 'HTML',
       disable_web_page_preview: true,
+      reply_markup: replyMarkup,
+    });
+  }
+
+  async sendDocument(chatId: number, filePath: string, caption?: string) {
+    const formData = new FormData();
+    formData.append('chat_id', String(chatId));
+    
+    const fileContent = readFileSync(filePath);
+    const blob = new Blob([fileContent], { type: 'text/plain' });
+    formData.append('document', blob, path.basename(filePath));
+    if (caption) {
+      formData.append('caption', caption);
+      formData.append('parse_mode', 'HTML');
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${this.token}/sendDocument`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const payload = (await response.json()) as { ok: boolean; description?: string };
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.description || 'Telegram API lỗi: sendDocument');
+    }
+  }
+
+  editMessageText(chatId: number, messageId: number, text: string) {
+    return this.request('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    }).catch((err) => {
+      console.log(`[telegram-client] editMessageText failed:`, err.message || String(err));
+    });
+  }
+
+  deleteMessage(chatId: number, messageId: number) {
+    return this.request('deleteMessage', {
+      chat_id: chatId,
+      message_id: messageId,
+    }).catch((err) => {
+      console.log(`[telegram-client] deleteMessage failed:`, err.message || String(err));
     });
   }
 }
 
 function helpText(defaultAppId: string) {
   return [
-    '<b>Bot Omnilogin - hướng dẫn nhanh</b>',
+    '<b>🤖 BOT OMNILOGIN - HƯỚNG DẪN SỬ DỤNG HỆ THỐNG</b>',
+    '--------------------------------------------',
+    '<b>1. Danh sách kịch bản (Workflow)</b>',
+    `• ${code('derma')} : Quét thứ hạng Google + Lướt web Khải Hoàn Derma`,
+    `• ${code('nuoi')}  : Nuôi tài khoản (đọc báo, xem YouTube, tìm kiếm ngẫu nhiên)`,
+    `• ${code('index')} : Tự động yêu cầu lập chỉ mục (Request Indexing) trên Google Search Console`,
     '',
-    '<b>1. Workflow đang có</b>',
-    `${code('derma')} - kiểm tra rank + lướt web Khải Hoàn Derma`,
-    `${code('nuoi')} - nuôi profile: Google, YouTube, đọc báo/web ngẫu nhiên`,
+    '<b>2. Hướng dẫn chạy 1 profile</b>',
+    `• Lập chỉ mục GSC: ${code('/run app=index profile=37')}`,
+    `• Chạy Rank QA: ${code('/run app=derma profile=37')}`,
+    `• Nuôi tài khoản: ${code('/run app=nuoi profile=1')}`,
     '',
-    '<b>2. Chạy 1 profile</b>',
-    `${code('/run app=derma profile=1')}`,
-    `${code('/run app=nuoi profile=1')}`,
+    '<b>3. Hướng dẫn chạy hàng loạt (hỗ trợ dải profile, ví dụ 37-66)</b>',
+    `• Lập chỉ mục dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
+    `• Nuôi dải tài khoản: ${code('/run app=nuoi profiles=1-10 delay=60 close=1')}`,
+    `• Chạy Rank QA dải: ${code('/run app=derma profiles=37-66 delay=60-180 close=1')}`,
     '',
-    '<b>3. Chạy nhiều profile</b>',
-    `${code('/run app=nuoi profiles=1,2,3 delay=60 close=1')}`,
-    `${code('/run app=nuoi profiles=all delay=60 close=1')}`,
-    `${code('/run app=derma profiles=1,2,3 delay=60 close=1')}`,
+    '<b>4. Giải thích các tham số chính</b>',
+    `• ${code('app=...')} : Tên kịch bản cần chạy (${code('derma')} / ${code('nuoi')} / ${code('index')})`,
+    `• ${code('profile=...')} : Tên hoặc ID của 1 profile duy nhất`,
+    `• ${code('profiles=...')} : Dải profile (${code('37-66')}, hoặc danh sách ${code('1,2,3')}, hoặc ${code('all')})`,
+    `• ${code('delay=...')} : Độ trễ ngẫu nhiên giữa các profile (ví dụ: ${code('60-120')} giây)`,
+    `• ${code('close=1')} : Tự động đóng trình duyệt sau khi chạy xong (mặc định)`,
     '',
-    '<b>4. Ý nghĩa tham số</b>',
-    `${code('app=nuoi')} chọn workflow cần chạy`,
-    `${code('profile=1')} chạy 1 profile; có thể nhập tên profile hoặc ID`,
-    `${code('profiles=1,2,3')} chạy nhiều profile theo thứ tự`,
-    `${code('profiles=all')} chạy toàn bộ profile hiện có`,
-    `${code('delay=60')} nghỉ 60 giây sau khi xong 1 profile rồi mới chạy profile tiếp theo`,
-    `${code('close=1')} tự đóng profile sau khi chạy xong`,
-    `${code('close=0')} chạy xong vẫn để profile mở`,
+    '<b>5. Tác vụ Đánh giá tự động</b>',
+    `• Gõ lệnh ${code('/review')} hoặc nhắn ${code('tự động đánh giá sản phẩm derma')}`,
+    '  Bot sẽ tự quét sản phẩm Flash sale và dùng profile phù hợp để gửi đánh giá 5 sao độc bản.',
     '',
-    '<b>5. Theo dõi và dừng</b>',
-    `${code('/status')} xem bot đang chạy tới đâu`,
-    `${code('/stop')} dừng workflow đang chạy và đóng profile hiện tại nếu có`,
-    `${code('/list')} xem danh sách alias workflow`,
-    `${code('/help')} hoặc ${code('/start')} xem lại hướng dẫn này`,
-    '',
-    '<b>Workflow mặc định</b>',
-    code(defaultAppId),
+    '<b>6. Lệnh điều khiển & Kiểm tra</b>',
+    `• ${code('/status')} : Kiểm tra tiến trình đang chạy trực tiếp`,
+    `• ${code('/stop')}   : Dừng chạy và đóng tất cả trình duyệt đang mở`,
+    `• ${code('/list')}   : Xem danh sách đầy đủ các kịch bản đang hỗ trợ`,
+    `• ${code('/start')} hoặc ${code('/help')} : Hiển thị bảng hướng dẫn này`,
+    '--------------------------------------------',
+    `Mặc định: ${code(defaultAppId)}`
   ].join('\n');
 }
 
@@ -518,6 +638,7 @@ function listText(aliases: AppAlias[], defaultAppId: string) {
     code('/run app=nuoi profiles=1,2,3 delay=60 close=1'),
     code('/run app=nuoi profiles=all delay=60 close=1'),
     code('/run app=derma profiles=1,2,3 delay=60 close=1'),
+    code('/review'),
     code('/status'),
     code('/stop'),
     '',
@@ -531,38 +652,104 @@ async function runAiAppForProfiles(
   chatId: number,
   omni: OmniLogin,
   app: AppAlias,
-  profiles: number[],
-  delaySeconds: number,
+  profileRefs: ProfileRef[],
+  delayRange: DelayRange,
   profileRunSeconds: number,
   closeAfterRun: boolean,
   mktProxyConfig: MktProxyConfig,
+  gscSyncConfig: GscSyncConfig,
   state: RunState,
 ) {
   state.active = true;
   state.appAlias = app.alias;
   state.appId = app.appId;
   state.startedAt = new Date().toISOString();
-  state.profiles = profiles;
+  state.profiles = profileRefs.map((p) => p.id);
   state.profileRunSeconds = profileRunSeconds;
   state.closeAfterRun = closeAfterRun;
 
   try {
-    for (let index = 0; index < profiles.length; index++) {
-      if (!state.active) break;
-      const profileId = profiles[index];
-      state.currentProfile = profileId;
-      state.lastMessage = `Đang chạy profile ${profileId}`;
-      await telegram.sendMessage(
+    const queueStartMsg = await telegram.sendMessage(
+      chatId,
+      [
+        `🚀 <b>KHỞI CHẠY HÀNG ĐỢI: [${app.alias}]</b>`,
+        `--------------------------------------------`,
+        `📋 Tổng số profile: <b>${profileRefs.length}</b>`,
+        `👤 Danh sách: <code>${profileRefs.map((p) => p.name).join(', ')}</code>`,
+        `🔄 Trạng thái: Đang chuẩn bị chạy...`,
+        `--------------------------------------------`
+      ].join('\n')
+    );
+
+    if (gscSyncConfig.enabled && gscSyncConfig.syncBeforeRun && app.appId === DEFAULT_APP_ID) {
+      state.lastMessage = 'Đang đồng bộ keyword từ Google Search Console';
+      await telegram.editMessageText(
         chatId,
+        queueStartMsg.message_id,
         [
-          '<b>Bắt đầu chạy workflow</b>',
-          `Alias: ${code(app.alias)}`,
-          `AI App: ${code(app.appId)}`,
-          `Tên: ${escapeHtml(app.name)}`,
-          `Profile: ${code(profileId)}`,
-          `Thứ tự: ${code(`${index + 1}/${profiles.length}`)}`,
-        ].join('\n'),
+          `🚀 <b>KHỞI CHẠY HÀNG ĐỢI: [${app.alias}]</b>`,
+          `--------------------------------------------`,
+          `📋 Tổng số profile: <b>${profileRefs.length}</b>`,
+          `👤 Danh sách: <code>${profileRefs.map((p) => p.name).join(', ')}</code>`,
+          `🔄 Trạng thái: Đang đồng bộ keyword từ GSC...`,
+          `--------------------------------------------`
+        ].join('\n')
       );
+      try {
+        const syncResult = await syncGscKeywordPool();
+        const gscInfo = syncResult.skipped
+          ? `Dùng pool cũ (${syncResult.count || 0} từ khóa)`
+          : `Đã đồng bộ mới (${syncResult.count || 0} từ khóa)`;
+        await telegram.editMessageText(
+          chatId,
+          queueStartMsg.message_id,
+          [
+            `🚀 <b>KHỞI CHẠY HÀNG ĐỢI: [${app.alias}]</b>`,
+            `--------------------------------------------`,
+            `📋 Tổng số profile: <b>${profileRefs.length}</b>`,
+            `👤 Danh sách: <code>${profileRefs.map((p) => p.name).join(', ')}</code>`,
+            `🔑 GSC Keywords: <b>${gscInfo}</b>`,
+            `🔄 Trạng thái: Đang chuẩn bị chạy các profile...`,
+            `--------------------------------------------`
+          ].join('\n')
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await telegram.editMessageText(
+          chatId,
+          queueStartMsg.message_id,
+          [
+            `🚀 <b>KHỞI CHẠY HÀNG ĐỢI: [${app.alias}]</b>`,
+            `--------------------------------------------`,
+            `📋 Tổng số profile: <b>${profileRefs.length}</b>`,
+            `👤 Danh sách: <code>${profileRefs.map((p) => p.name).join(', ')}</code>`,
+            `⚠️ GSC: <i>Lỗi đồng bộ (${escapeHtml(message)})</i>`,
+            `🔄 Trạng thái: Đang chuẩn bị chạy các profile...`,
+            `--------------------------------------------`
+          ].join('\n')
+        );
+      }
+    }
+
+    for (let index = 0; index < profileRefs.length; index++) {
+      if (!state.active) break;
+      const profileRef = profileRefs[index];
+      const profileId = profileRef.id;
+      const profileName = profileRef.name;
+      state.currentProfile = profileId;
+      state.lastMessage = `Đang chạy profile ${profileName}`;
+
+      await telegram.editMessageText(
+        chatId,
+        queueStartMsg.message_id,
+        [
+          `🚀 <b>HÀNG ĐỢI HOẠT ĐỘNG: [${app.alias}]</b>`,
+          `--------------------------------------------`,
+          `📋 Tiến độ: <b>${index + 1}/${profileRefs.length}</b> profiles`,
+          `👤 Đang xử lý: <b>Profile ${profileName}</b> (ID: ${profileId})`,
+          `--------------------------------------------`
+        ].join('\n')
+      ).catch(() => {});
 
       await refreshMktProxyForProfile(telegram, chatId, omni, profileId, mktProxyConfig);
       const aiAppLogOffset = getFileSize(getAiAppLogPath(app.appId));
@@ -570,7 +757,7 @@ async function runAiAppForProfiles(
       const hasLocalScript = existsSync(localScriptPath);
 
       const result = hasLocalScript
-        ? await runLocalAiAppScript(omni, app, profileId)
+        ? await runLocalAiAppScript(telegram, chatId, omni, app, profileId, profileName)
         : await omni.aiApps.run(app.appId, {
             profileId,
             mode: 'debug',
@@ -578,46 +765,26 @@ async function runAiAppForProfiles(
 
       if (!result) {
         throw new Error(
-          `Khong the chay workflow ${app.appId}: khong tim thay local script va AI App khong tra ket qua`,
+          `Không thể chạy kịch bản ${app.appId}: không tìm thấy local script và AI App không phản hồi`,
         );
       }
 
-      if (!result.ok) {
-        await telegram.sendMessage(
-          chatId,
-          [
-            '<b>Profile chạy lỗi</b>',
-            `Alias: ${code(app.alias)}`,
-            `Profile: ${code(profileId)}`,
-            `Lỗi: ${code(result.error || 'không rõ lỗi')}`,
-          ].join('\n'),
-        );
-      } else {
-        await telegram.sendMessage(
-          chatId,
-          [
-            hasLocalScript ? '<b>Workflow đã chạy xong</b>' : '<b>Đã gửi lệnh chạy</b>',
-            `Alias: ${code(app.alias)}`,
-            `Profile: ${code(profileId)}`,
-            hasLocalScript
-              ? `Nguồn script: ${code(localScriptPath)}`
-              : 'Omnilogin đang xử lý AI App trong nền.',
-            hasLocalScript ? '' : `Bot sẽ chờ: ${code(`${profileRunSeconds} giây`)}`,
-          ].join('\n'),
-        );
+      if (!hasLocalScript) {
+        if (!result.ok) {
+          await telegram.sendMessage(
+            chatId,
+            `❌ <b>Profile ${profileName} (ID: ${profileId}) chạy lỗi:</b> ${code(result.error || 'không rõ lỗi')}`
+          );
+        } else {
+          await telegram.sendMessage(
+            chatId,
+            `🟢 <b>Profile ${profileName} (ID: ${profileId}) đã gửi lệnh chạy thành công.</b>`
+          );
+        }
       }
 
       if (result.ok && !hasLocalScript && profileRunSeconds > 0) {
-        state.lastMessage = `Đang chờ profile ${profileId} hoàn tất trong ${profileRunSeconds}s`;
-        await telegram.sendMessage(
-          chatId,
-          [
-            '<b>Đang chờ workflow hoàn tất</b>',
-            `Profile: ${code(profileId)}`,
-            `Thời gian chờ: ${code(`${profileRunSeconds} giây`)}`,
-            `Tự đóng profile sau khi chờ: ${code(closeAfterRun ? 'có' : 'không')}`,
-          ].join('\n'),
-        );
+        state.lastMessage = `Đang chờ profile ${profileName} hoàn tất trong ${profileRunSeconds}s`;
         const waitResult = await waitForProfileRunOrCaptcha(
           telegram,
           chatId,
@@ -629,17 +796,19 @@ async function runAiAppForProfiles(
           aiAppLogOffset,
         );
         if (waitResult === 'captcha') {
-          if (index < profiles.length - 1 && delaySeconds > 0) {
-            state.lastMessage = `Nghỉ ${delaySeconds}s sau CAPTCHA trước profile tiếp theo`;
-            await telegram.sendMessage(
-              chatId,
-              [
-                '<b>Tạm nghỉ sau CAPTCHA</b>',
-                `Thời gian nghỉ: ${code(`${delaySeconds} giây`)}`,
-                `Profile tiếp theo: ${code(profiles[index + 1])}`,
-              ].join('\n'),
-            );
-            await delay(delaySeconds * 1000);
+          if (index < profileRefs.length - 1) {
+            const actualDelay = delayRange.min === delayRange.max 
+              ? delayRange.min 
+              : delayRange.min + Math.floor(Math.random() * (delayRange.max - delayRange.min + 1));
+            if (actualDelay > 0) {
+              state.lastMessage = `Nghỉ ${actualDelay}s sau CAPTCHA trước profile tiếp theo`;
+              const captchaDelayMsg = await telegram.sendMessage(
+                chatId,
+                `⏳ <b>Tạm nghỉ sau CAPTCHA:</b> Đang nghỉ ${actualDelay}s trước khi chuyển sang profile tiếp theo...`
+              );
+              await delay(actualDelay * 1000);
+              await telegram.deleteMessage(chatId, captchaDelayMsg.message_id).catch(() => {});
+            }
           }
           continue;
         }
@@ -648,55 +817,45 @@ async function runAiAppForProfiles(
       if (!state.active) break;
 
       if (closeAfterRun) {
-        state.lastMessage = `Đang đóng profile ${profileId}`;
+        state.lastMessage = `Đang đóng profile ${profileName}`;
         try {
           await omni.close(profileId);
-          await telegram.sendMessage(
-            chatId,
-            [
-              '<b>Đã đóng profile</b>',
-              `Profile: ${code(profileId)}`,
-            ].join('\n'),
-          );
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          await telegram.sendMessage(
-            chatId,
-            [
-              '<b>Không đóng được profile</b>',
-              `Profile: ${code(profileId)}`,
-              `Chi tiết: ${code(message)}`,
-            ].join('\n'),
-          );
+          console.log(`[bot] failed to close profile ${profileId}:`, error);
         }
       }
 
-      if (index < profiles.length - 1 && delaySeconds > 0) {
-        if (!state.active) break;
-        state.lastMessage = `Nghỉ ${delaySeconds}s trước profile tiếp theo`;
-        await telegram.sendMessage(
-          chatId,
-          [
-            '<b>Tạm nghỉ giữa profile</b>',
-            `Thời gian nghỉ: ${code(`${delaySeconds} giây`)}`,
-            `Profile tiếp theo: ${code(profiles[index + 1])}`,
-          ].join('\n'),
-        );
-        await delay(delaySeconds * 1000);
+      if (index < profileRefs.length - 1) {
+        const actualDelay = delayRange.min === delayRange.max 
+          ? delayRange.min 
+          : delayRange.min + Math.floor(Math.random() * (delayRange.max - delayRange.min + 1));
+        if (actualDelay > 0) {
+          if (!state.active) break;
+          state.lastMessage = `Nghỉ ${actualDelay}s trước profile tiếp theo`;
+          const delayMsg = await telegram.sendMessage(
+            chatId,
+            `⏳ <b>Tạm nghỉ:</b> Đang nghỉ ${actualDelay}s trước khi chạy Profile <b>${profileRefs[index + 1].name}</b>...`
+          );
+          await delay(actualDelay * 1000);
+          await telegram.deleteMessage(chatId, delayMsg.message_id).catch(() => {});
+        }
       }
     }
 
     if (state.active) {
       state.lastMessage = 'Hoàn tất hàng đợi profile';
-      await telegram.sendMessage(
+      await telegram.editMessageText(
         chatId,
+        queueStartMsg.message_id,
         [
-          '<b>Hoàn tất hàng đợi</b>',
-          `Alias: ${code(app.alias)}`,
-          `AI App: ${code(app.appId)}`,
-          `Profiles: ${code(profiles.join(', '))}`,
-        ].join('\n'),
-      );
+          `✅ <b>ĐÃ HOÀN TẤT TOÀN BỘ HÀNG ĐỢI!</b>`,
+          `--------------------------------------------`,
+          `🎯 Kịch bản: <b>[${app.alias}]</b>`,
+          `📋 Tổng số đã chạy: <b>${profileRefs.length}</b> profiles`,
+          `👤 Danh sách: <code>${profileRefs.map((p) => p.name).join(', ')}</code>`,
+          `--------------------------------------------`
+        ].join('\n')
+      ).catch(() => {});
     } else {
       state.lastMessage = 'Hàng đợi đã dừng';
     }
@@ -717,21 +876,371 @@ async function runAiAppForProfiles(
   }
 }
 
-async function runLocalAiAppScript(omni: OmniLogin, app: AppAlias, profileId: number) {
+function readJsonFileSafe(path: string) {
+  try {
+    if (existsSync(path)) {
+      return JSON.parse(readFileSync(path, 'utf8'));
+    }
+  } catch (e) {
+    console.log('[telegram-bot] readJsonFileSafe failed:', path, e);
+  }
+  return null;
+}
+
+async function runLocalAiAppScript(
+  telegram: TelegramClient,
+  chatId: number,
+  omni: OmniLogin,
+  app: AppAlias,
+  profileId: number,
+  profileName: string,
+) {
   const scriptPath = getLocalAiAppScriptPath(app.appId);
   if (!existsSync(scriptPath)) return null;
 
-  const { session } = await omni.open(profileId, {
-    headless: false,
-  });
-  const script = readFileSync(scriptPath, 'utf8');
-  const runScript = new AsyncFunction('page', 'omni', '__params', script);
+  // Set up live status message
+  let statusMessageId: number | null = null;
+  const statusLines: Record<string, string> = {};
+
+  if (app.appId === 'profile-warmup-random') {
+    statusLines.warmup = '🔵 Đang chạy các tác vụ duyệt web ngẫu nhiên...';
+  } else if (app.appId === 'index-url-khaihoanderma') {
+    statusLines.navigating = '⚪ Mở Google Search Console';
+    statusLines.inspecting = '⚪ Kiểm tra trạng thái URL';
+    statusLines.submitting = '⚪ Gửi yêu cầu lập chỉ mục';
+  } else {
+    statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
+    statusLines.search = '⚪ Tìm kiếm từ khóa Derma';
+    statusLines.rank = '⚪ Quét thứ hạng Google Search';
+    statusLines.audit = '⚪ Tương tác trang mục tiêu (Audit)';
+  }
+
+  function escapeHtml(text: string) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function renderStatus(currentStep: string, detail?: any) {
+    if (app.appId === 'profile-warmup-random') {
+      return [
+        `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
+        `--------------------------------------------`,
+        statusLines.warmup,
+        `--------------------------------------------`,
+        `<i>Cập nhật liên tục từ trình duyệt...</i>`
+      ].join('\n');
+    }
+
+    if (app.appId === 'index-url-khaihoanderma') {
+      if (currentStep === 'gsc_navigating') {
+        statusLines.navigating = `🔵 ${escapeHtml(detail || 'Đang mở GSC...')}`;
+      } else if (currentStep === 'derma_start') {
+        statusLines.navigating = `🟢 Đã mở Google Search Console`;
+        statusLines.inspecting = `🔵 Đang kiểm tra URL: <code>${escapeHtml(detail || '')}</code>`;
+        statusLines.submitting = '⚪ Đang chờ...';
+      } else if (currentStep === 'derma_page') {
+        statusLines.navigating = `🟢 Đã mở Google Search Console`;
+        statusLines.inspecting = `🔵 Đang phân tích dữ liệu Google Index (URL ${detail?.pageNum || 1}/${detail?.maxPages || 1})...`;
+        statusLines.submitting = '⚪ Đang chờ...';
+      } else if (currentStep === 'derma_found') {
+        const urlStr = typeof detail === 'string' ? detail : (detail?.keyword || '');
+        statusLines.inspecting = `🟢 Đã có sẵn trong chỉ mục (bỏ qua): <code>${escapeHtml(urlStr)}</code>`;
+      } else if (currentStep === 'audit_start') {
+        statusLines.submitting = `🔵 Đang gửi yêu cầu lập chỉ mục...`;
+      } else if (currentStep === 'audit_reading') {
+        const elapsed = detail?.elapsed || 0;
+        const total = detail?.total || 180;
+        statusLines.submitting = `🔵 Đang chạy Live Test: ${elapsed}/${total}s (Ngẫu nhiên: ${total}s)...`;
+      } else if (currentStep === 'audit_done') {
+        statusLines.submitting = `🟢 Đã gửi yêu cầu thành công!`;
+      } else if (currentStep === 'gsc_quota_exceeded') {
+        statusLines.submitting = `🔴 Đã hết hạn ngạch ngày của Google!`;
+      } else if (currentStep === 'gsc_done') {
+        statusLines.submitting = `🟢 Đã hoàn tất toàn bộ danh sách!`;
+      }
+
+      return [
+        `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
+        `--------------------------------------------`,
+        statusLines.navigating,
+        statusLines.inspecting,
+        statusLines.submitting,
+        `--------------------------------------------`,
+        `<i>Cập nhật liên tục từ trình duyệt...</i>`
+      ].join('\n');
+    }
+
+    if (currentStep === 'news_start') {
+      statusLines.warmup = `🔵 Đang đọc báo: ${escapeHtml(detail || 'Tin tức...')}`;
+    } else if (currentStep === 'news_reading') {
+      const elapsed = detail?.elapsed || 0;
+      const total = detail?.total || 0;
+      statusLines.warmup = `🔵 Đang đọc báo: ${elapsed}/${total} giây...`;
+    } else if (currentStep === 'news_done') {
+      statusLines.warmup = `🟢 Đã đọc báo xong`;
+    } else if (currentStep === 'derma_start') {
+      statusLines.search = `🔵 Đang tìm kiếm từ khóa: <b>${escapeHtml(detail || '')}</b>`;
+    } else if (currentStep === 'derma_page') {
+      statusLines.rank = `🔵 Đang quét trang ${detail?.pageNum || 1}/${detail?.maxPages || 5} của Google...`;
+    } else if (currentStep === 'derma_found') {
+      statusLines.search = `🟢 Đã tìm từ khóa: <b>${escapeHtml(detail?.keyword || '')}</b>`;
+      statusLines.rank = `🟢 Tìm thấy tại Trang ${detail?.pageNum || 1}, Vị trí ${detail?.position || 1}`;
+    } else if (currentStep === 'derma_not_found') {
+      statusLines.search = `🟢 Đã tìm từ khóa: <b>${escapeHtml(detail?.keyword || '')}</b>`;
+      statusLines.rank = `🟡 Không tìm thấy trên Google (sẽ đi trực tiếp)`;
+    } else if (currentStep === 'audit_start') {
+      statusLines.audit = `🔵 Bắt đầu tương tác website mục tiêu...`;
+    } else if (currentStep === 'audit_reading') {
+      const elapsed = detail?.elapsed || 0;
+      const total = detail?.total || 0;
+      const url = String(detail?.url || '');
+      const urlPath = url ? url.substring(url.indexOf('//') + 2) : '';
+      const shortUrl = urlPath.length > 30 ? '...' + urlPath.substring(urlPath.length - 27) : urlPath;
+      statusLines.audit = `🔵 Đang lướt trang: ${escapeHtml(shortUrl)} (${elapsed}/${total}s)...`;
+    } else if (currentStep === 'audit_done') {
+      statusLines.audit = `🟢 Đã tương tác xong website`;
+    }
+
+    return [
+      `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
+      `--------------------------------------------`,
+      statusLines.warmup,
+      statusLines.search,
+      statusLines.rank,
+      statusLines.audit,
+      `--------------------------------------------`,
+      `<i>Cập nhật liên tục từ trình duyệt...</i>`
+    ].join('\n');
+  }
 
   try {
-    await runScript(session.page, session.services, {});
+    const msg = await telegram.sendMessage(chatId, renderStatus('init'));
+    statusMessageId = msg.message_id;
+  } catch (e) {
+    console.log('[telegram-status] failed to send initial status:', e);
+  }
+
+  const scriptStartedAt = Date.now();
+  try {
+    // Open profile with retry logic
+    let session: any;
+    try {
+      const openResult = await omni.open(profileId, { headless: false });
+      session = openResult.session;
+    } catch (err: any) {
+      const errMsg = err.message || '';
+      if (errMsg.includes('already') || errMsg.includes('openned') || errMsg.includes('open')) {
+        console.log(`Profile ${profileId} browser is already open/opening. Closing and retrying in 3s...`);
+        await omni.close(profileId).catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const openResult = await omni.open(profileId, { headless: false });
+        session = openResult.session;
+      } else {
+        throw err;
+      }
+    }
+
+    const reporter = async (step: string, detail?: any) => {
+      if (statusMessageId !== null) {
+        const updatedText = renderStatus(step, detail);
+        await telegram.editMessageText(chatId, statusMessageId, updatedText).catch(() => {});
+      }
+    };
+
+    const script = readFileSync(scriptPath, 'utf8');
+    const runScript = new AsyncFunction('page', 'omni', '__params', script);
+
+    await runScript(session.page, session.services, { reporter });
+    const elapsedMs = Date.now() - scriptStartedAt;
+
+    let reportText = `🟢 <b>Kịch bản đã hoàn tất thành công!</b>\nProfile: <b>${profileName}</b> (ID: ${profileId})`;
+
+    if (app.appId === 'khaihoan-derma-rank-qa') {
+      const outPath = 'C:\\Users\\Admin\\Desktop\\key_derma\\khaihoan-derma-rank-qa-output.json';
+      const output = readJsonFileSafe(outPath);
+      if (output) {
+        const keyword = output.keyword || 'Không rõ';
+        const rank = output.googleRank;
+        const rankText = rank !== null && rank !== undefined ? `Trang ${Math.ceil(rank/10)} (Vị trí ${rank})` : 'Không tìm thấy (vào trực tiếp)';
+        const newsHost = output.newsWarmup?.selectedResult?.host || 'Không rõ';
+        const newsDuration = Math.floor((output.newsWarmup?.readStats?.elapsedMs || 0) / 1000);
+        const visitedCount = output.siteAudit?.visitedPages?.length || 0;
+        const auditDuration = Math.floor((output.siteAudit?.elapsedMs || 0) / 1000);
+        const totalDuration = Math.floor(elapsedMs / 1000);
+        const totalMin = Math.floor(totalDuration / 60);
+        const totalSec = totalDuration % 60;
+
+        reportText = [
+          `📊 <b>BÁO CÁO CHI TIẾT: PROFILE ${profileName}</b>`,
+          `--------------------------------------------`,
+          `🤖 Kịch bản: <b>Khải Hoàn Derma Rank QA</b>`,
+          `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
+          `🔑 Từ khóa: <code>${escapeHtml(keyword)}</code>`,
+          `📈 Thứ hạng Google: <b>${rankText}</b>`,
+          `📰 Đọc báo (Warmup): <code>${escapeHtml(newsHost)}</code> (${newsDuration}s)`,
+          `👁️ Tương tác Web: Đã duyệt <b>${visitedCount} trang</b> (${auditDuration}s)`,
+          `⏱️ Tổng thời gian: <b>${totalMin} phút ${totalSec}s</b>`,
+          `--------------------------------------------`,
+          `✅ <b>HOÀN THÀNH XUẤT SẮC!</b>`
+        ].join('\n');
+      }
+    } else if (app.appId === 'profile-warmup-random') {
+      const outPath = 'C:\\Users\\Admin\\Desktop\\profile-warmup-random-output.json';
+      const output = readJsonFileSafe(outPath);
+      if (output) {
+        const actions = Array.isArray(output.actions) ? output.actions : [];
+        const taskSummaryLines = actions.map((act: any) => {
+          const name = act.taskName;
+          const emoji = act.ok ? '🟢' : '🔴';
+          const elapsed = Math.floor((act.elapsedMs || 0) / 1000);
+          if (name === 'youtubeWatch') {
+            const videoTitle = act.result?.video?.title || 'ngẫu nhiên';
+            const shortTitle = videoTitle.length > 35 ? videoTitle.substring(0, 32) + '...' : videoTitle;
+            return `• ${emoji} YouTube: Xem "${escapeHtml(shortTitle)}" (${elapsed}s)`;
+          } else if (name === 'newsBrowse') {
+            const site = act.result?.site || 'tin tức';
+            const shortSite = site.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            return `• ${emoji} Đọc báo: <code>${escapeHtml(shortSite)}</code> (${elapsed}s)`;
+          } else if (name === 'directBrowse') {
+            const url = act.result?.url || 'trang web';
+            const shortUrl = url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            return `• ${emoji} Duyệt web: <code>${escapeHtml(shortUrl)}</code> (${elapsed}s)`;
+          }
+          return `• ${emoji} Tác vụ ${name} (${elapsed}s)`;
+        }).join('\n');
+
+        const totalDuration = Math.floor(elapsedMs / 1000);
+
+        reportText = [
+          `📊 <b>BÁO CÁO CHI TIẾT: PROFILE ${profileName}</b>`,
+          `--------------------------------------------`,
+          `🤖 Kịch bản: <b>Nuôi & Warmup Profile</b>`,
+          `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
+          `⏱️ Tổng thời gian: <b>${totalDuration} giây</b>`,
+          `📋 Các tác vụ đã hoàn thành:`,
+          taskSummaryLines,
+          `--------------------------------------------`,
+          `✅ <b>NUÔI PROFILE HOÀN TẤT!</b>`
+        ].join('\n');
+      }
+    } else if (app.appId === 'index-url-khaihoanderma') {
+      const outPath = 'C:\\Users\\Admin\\Downloads\\index-url-output.json';
+      const output = readJsonFileSafe(outPath);
+      if (output) {
+        const totalDuration = Math.floor(elapsedMs / 1000);
+        const totalMin = Math.floor(totalDuration / 60);
+        const totalSec = totalDuration % 60;
+
+        let shouldSendFile = false;
+
+        if (output.quotaExceeded) {
+          shouldSendFile = true;
+          reportText = [
+            `⚠️ <b>QUÁ HẠN NGẠCH LẬP CHỈ MỤC (GOOGLE QUOTA EXCEEDED)</b>`,
+            `--------------------------------------------`,
+            `🤖 Kịch bản: <b>Index URL Khai Hoàn Derma</b>`,
+            `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
+            `⏱️ Đã chạy trong: <b>${totalMin} phút ${totalSec}s</b>`,
+            `🟢 Đã gửi yêu cầu index mới: <b>${output.indexedCount} URL</b>`,
+            `🔵 Đã có sẵn trong chỉ mục (bỏ qua): <b>${output.alreadyIndexedCount} URL</b>`,
+            `--------------------------------------------`,
+            `📌 <b>DANH SÁCH CÁC URL CHƯA ĐƯỢC INDEX CÒN LẠI:</b>`,
+            Array.isArray(output.unindexedUrls) && output.unindexedUrls.length > 0
+              ? output.unindexedUrls.map((u: string) => `• <code>${escapeHtml(u)}</code>`).join('\n')
+              : 'Không còn URL nào.',
+            `--------------------------------------------`,
+            `🔴 <b>TẠM DỪNG: Vui lòng thử lại vào ngày mai khi Google reset hạn ngạch!</b>`,
+            `📥 <i>Bot đang gửi đính kèm file chứa các link chưa index còn lại...</i>`
+          ].join('\n');
+        } else if (output.hasError) {
+          shouldSendFile = true;
+          reportText = [
+            `❌ <b>KỊCH BẢN GẶP LỖI KHI LẬP CHỈ MỤC</b>`,
+            `--------------------------------------------`,
+            `🤖 Kịch bản: <b>Index URL Khai Hoàn Derma</b>`,
+            `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
+            `⚠️ Lỗi: <code>${escapeHtml(output.errorMessage || 'Lỗi không xác định')}</code>`,
+            `⏱️ Đã chạy trong: <b>${totalMin} phút ${totalSec}s</b>`,
+            `🟢 Đã gửi yêu cầu index mới: <b>${output.indexedCount} URL</b>`,
+            `🔵 Đã có sẵn trong chỉ mục (bỏ qua): <b>${output.alreadyIndexedCount} URL</b>`,
+            `--------------------------------------------`,
+            `📌 <b>DANH SÁCH CÁC URL CHƯA ĐƯỢC INDEX CÒN LẠI:</b>`,
+            Array.isArray(output.unindexedUrls) && output.unindexedUrls.length > 0
+              ? output.unindexedUrls.map((u: string) => `• <code>${escapeHtml(u)}</code>`).join('\n')
+              : 'Không còn URL nào.',
+            `--------------------------------------------`,
+            `📥 <i>Bot đang gửi đính kèm file chứa các link chưa index còn lại...</i>`
+          ].join('\n');
+        } else {
+          reportText = [
+            `📊 <b>BÁO CÁO CHI TIẾT: PROFILE ${profileName}</b>`,
+            `--------------------------------------------`,
+            `🤖 Kịch bản: <b>Index URL Khai Hoàn Derma</b>`,
+            `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
+            `⏱️ Tổng thời gian: <b>${totalMin} phút ${totalSec}s</b>`,
+            `🟢 Đã gửi yêu cầu index mới: <b>${output.indexedCount} URL</b>`,
+            `🔵 Đã có sẵn trong chỉ mục (bỏ qua): <b>${output.alreadyIndexedCount} URL</b>`,
+            `--------------------------------------------`,
+            `🎉 <b>HOÀN THÀNH: Toàn bộ danh sách URL đã được gửi yêu cầu lập chỉ mục thành công!</b>`
+          ].join('\n');
+        }
+
+        if (statusMessageId !== null) {
+          await telegram.editMessageText(chatId, statusMessageId, reportText).catch(() => {});
+        } else {
+          await telegram.sendMessage(chatId, reportText);
+        }
+
+        if (shouldSendFile) {
+          const txtFilePath = 'C:\\Users\\Admin\\Downloads\\khaihoanderma.txt';
+          if (existsSync(txtFilePath)) {
+            try {
+              await telegram.sendDocument(
+                chatId,
+                txtFilePath,
+                `Danh sách các URL chưa được index còn lại (Profile ${profileName})`
+              );
+            } catch (err: any) {
+              console.error('[bot] sendDocument failed:', err);
+              await telegram.sendMessage(chatId, `❌ Lỗi gửi file danh sách URL còn lại: <code>${err.message}</code>`);
+            }
+          }
+        }
+
+        // Always delete the local queue file after the run finishes
+        const txtFilePath = 'C:\\Users\\Admin\\Downloads\\khaihoanderma.txt';
+        if (existsSync(txtFilePath)) {
+          try {
+            unlinkSync(txtFilePath);
+            console.log('[bot] Deleted local queue file on run completion.');
+          } catch (err) {
+            console.error('[bot] failed to delete TXT file:', err);
+          }
+        }
+        return { ok: true as const };
+      }
+    }
+
+    if (statusMessageId !== null) {
+      await telegram.editMessageText(chatId, statusMessageId, reportText).catch(() => {});
+    }
     return { ok: true as const };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const failText = [
+      `❌ <b>KỊCH BẢN CHẠY THẤT BẠI</b>`,
+      `--------------------------------------------`,
+      `🤖 Kịch bản: <b>${app.name}</b>`,
+      `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
+      `⚠️ Lỗi: <code>${escapeHtml(message)}</code>`,
+      `--------------------------------------------`
+    ].join('\n');
+
+    if (statusMessageId !== null) {
+      await telegram.editMessageText(chatId, statusMessageId, failText).catch(() => {});
+    }
     return { ok: false as const, error: message };
   }
 }
@@ -748,12 +1257,40 @@ async function main() {
   const defaultProfileRunSeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_RUN_SECONDS, 180) || 180;
   const defaultCloseAfterRun = parseBoolean(process.env.CLOSE_PROFILE_AFTER_RUN, true);
   const mktProxyConfig = loadMktProxyConfig();
+  const gscConfig = loadGscConfig();
+  const gscSyncConfig: GscSyncConfig = {
+    enabled: gscConfig.enabled,
+    syncBeforeRun: parseBoolean(process.env.GSC_SYNC_BEFORE_RUN, true),
+  };
   const omniHost = process.env.OMNILOGIN_HOST?.trim() || 'http://localhost:35353';
 
   const telegram = new TelegramClient(token);
   const omni = new OmniLogin({ host: omniHost, timeout: 60_000 });
   const state: RunState = { active: false };
   let offset = 0;
+
+  const defaultMenuKeyboard = {
+    keyboard: [
+      [
+        { text: '🚀 Chạy Index GSC (Profile 37)' },
+        { text: '🌱 Chạy Nuôi Profile (Profiles 37-66)' }
+      ],
+      [
+        { text: '📈 Chạy Rank QA (Profiles 37-66)' },
+        { text: '✍️ Đánh giá sản phẩm' }
+      ],
+      [
+        { text: '📊 Xem trạng thái' },
+        { text: '🛑 Dừng kịch bản' }
+      ],
+      [
+        { text: '📋 Danh sách Apps' },
+        { text: '❓ Trợ giúp' }
+      ]
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: false
+  };
 
   console.log(`Telegram bot started. DEFAULT_APP_ID=${defaultAppId}, OMNILOGIN_HOST=${omniHost}`);
   await telegram
@@ -765,8 +1302,9 @@ async function main() {
         `Omnilogin: ${code(omniHost)}`,
         `MKTProxy: ${code(mktProxyConfig.enabled ? 'bật' : 'tắt')}`,
         '',
-        `Gõ ${code('/help')} để xem lệnh hỗ trợ.`,
+        `Sử dụng các nút bấm nhanh bên dưới hoặc gõ ${code('/help')} để xem lệnh hỗ trợ.`,
       ].join('\n'),
+      defaultMenuKeyboard
     )
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -780,9 +1318,10 @@ async function main() {
       for (const update of updates) {
         offset = update.update_id + 1;
         const message = update.message;
-        const text = message?.text?.trim();
+        let text = (message?.text || message?.caption || '').trim();
         const chatId = message?.chat.id;
-        if (!message || !text || !chatId) continue;
+        if (!message || !chatId) continue;
+        if (!text && !message.document) continue;
 
         if (chatId !== allowedChatId) {
           await telegram.sendMessage(
@@ -795,13 +1334,79 @@ async function main() {
           continue;
         }
 
+        // Map shortcut buttons to commands
+        if (text === '🚀 Chạy Index GSC (Profile 37)') {
+          text = '/run app=index profile=37';
+        } else if (text === '🌱 Chạy Nuôi Profile (Profiles 37-66)') {
+          text = '/run app=warmup profiles=37-66';
+        } else if (text === '📈 Chạy Rank QA (Profiles 37-66)') {
+          text = '/run app=derma profiles=37-66';
+        } else if (text === '✍️ Đánh giá sản phẩm') {
+          text = '/review';
+        } else if (text === '📊 Xem trạng thái') {
+          text = '/status';
+        } else if (text === '🛑 Dừng kịch bản') {
+          text = '/stop';
+        } else if (text === '📋 Danh sách Apps') {
+          text = '/list';
+        } else if (text === '❓ Trợ giúp') {
+          text = '/help';
+        }
+
+        // Handle GSC URL file upload
+        if (message.document) {
+          const doc = message.document;
+          const fileName = doc.file_name || 'urls.txt';
+          if (fileName.toLowerCase().endsWith('.txt')) {
+            await telegram.sendMessage(chatId, `📥 Đang tải file <b>${fileName}</b>...`, defaultMenuKeyboard);
+            try {
+              const fileInfo = await telegram.getFile(doc.file_id);
+              const content = await telegram.downloadFile(fileInfo.file_path);
+              
+              const savePath = 'C:\\Users\\Admin\\Downloads\\khaihoanderma.txt';
+              const dir = path.dirname(savePath);
+              if (!existsSync(dir)) {
+                mkdirSync(dir, { recursive: true });
+              }
+              writeFileSync(savePath, content, 'utf8');
+
+              // Reset progress database to run all URLs fresh
+              const progressDbPath = 'C:\\Users\\Admin\\Downloads\\khaihoanderma-progress.json';
+              if (existsSync(progressDbPath)) {
+                try {
+                  writeFileSync(progressDbPath, JSON.stringify({ indexed: [] }, null, 2), 'utf8');
+                } catch (e) {}
+              }
+
+              await telegram.sendMessage(
+                chatId,
+                [
+                  `✅ <b>Đã nhận và lưu file thành công!</b>`,
+                  `📂 File: <code>${fileName}</code>`,
+                  `📍 Lưu tại: <code>${savePath}</code>`,
+                  `🔄 <i>Đã làm mới tiến trình lập chỉ mục cũ (sẽ chạy lại từ đầu).</i>`,
+                  '',
+                  `👉 Nhập lệnh chạy: ${code('/run app=index profile=37')}`
+                ].join('\n'),
+                defaultMenuKeyboard
+              );
+            } catch (err: any) {
+              await telegram.sendMessage(chatId, `❌ Lỗi tải file: <code>${err.message}</code>`, defaultMenuKeyboard);
+            }
+            continue;
+          } else {
+            await telegram.sendMessage(chatId, '⚠️ Bot chỉ nhận các file dạng text (đuôi <code>.txt</code>).', defaultMenuKeyboard);
+            continue;
+          }
+        }
+
         if (text.startsWith('/help') || text.startsWith('/start')) {
-          await telegram.sendMessage(chatId, helpText(defaultAppId));
+          await telegram.sendMessage(chatId, helpText(defaultAppId), defaultMenuKeyboard);
           continue;
         }
 
         if (text.startsWith('/list')) {
-          await telegram.sendMessage(chatId, listText(aliases, defaultAppId));
+          await telegram.sendMessage(chatId, listText(aliases, defaultAppId), defaultMenuKeyboard);
           continue;
         }
 
@@ -824,11 +1429,16 @@ async function main() {
                   '<b>Trạng thái: Đang rảnh</b>',
                   `Ghi chú gần nhất: ${code(state.lastMessage || 'chưa có')}`,
                 ].join('\n'),
+            defaultMenuKeyboard
           );
           continue;
         }
 
         if (text.startsWith('/stop')) {
+          if (state.childProcess) {
+            state.childProcess.kill();
+            state.childProcess = undefined;
+          }
           const args = parseArgs(text);
           const app = resolveApp(args, aliases, defaultAppId);
           await omni.aiApps.stop(app.appId);
@@ -844,7 +1454,158 @@ async function main() {
               `Alias: ${code(app.alias)}`,
               `AI App: ${code(app.appId)}`,
             ].join('\n'),
+            defaultMenuKeyboard
           );
+          continue;
+        }
+
+        if (text.startsWith('/review') || text === 'tự động đánh giá sản phẩm derma' || text.startsWith('/danhgia')) {
+          if (state.active) {
+            await telegram.sendMessage(
+              chatId,
+              [
+                '<b>Bot đang bận</b>',
+                `Dùng ${code('/status')} để xem trạng thái.`,
+                `Dùng ${code('/stop')} nếu cần dừng kịch bản đang chạy.`,
+              ].join('\n'),
+              defaultMenuKeyboard
+            );
+            continue;
+          }
+
+          state.active = true;
+          state.appAlias = 'review';
+          state.appId = 'auto-review';
+          state.startedAt = new Date().toISOString();
+          state.command = text;
+          state.lastMessage = 'Đang chạy kịch bản tự động đánh giá sản phẩm Flash Sale';
+
+          const statusMsg = await telegram.sendMessage(
+            chatId,
+            [
+              '🚀 <b>Bắt đầu kịch bản tự động đánh giá sản phẩm derma</b>',
+              '--------------------------------------------',
+              '🔄 Trạng thái: Đang khởi động kịch bản...',
+              '--------------------------------------------'
+            ].join('\n')
+          );
+
+          try {
+            // Spawn child process to run npm run auto:review
+            const child = spawn('npm', ['run', 'auto:review'], { shell: true, cwd: process.cwd() });
+            state.childProcess = child;
+
+            let lastStatusLines: string[] = ['Đang khởi chạy kịch bản...'];
+            
+            const updateTelegramStatus = async () => {
+              const textContent = [
+                '🚀 <b>Kịch bản tự động đánh giá sản phẩm derma</b>',
+                '--------------------------------------------',
+                ...lastStatusLines,
+                '--------------------------------------------',
+                '<i>Đang chạy ngầm...</i>'
+              ].join('\n');
+              await telegram.editMessageText(chatId, statusMsg.message_id, textContent).catch(() => {});
+            };
+
+            let buffer = '';
+            
+            const handleOutput = (data: Buffer) => {
+              buffer += data.toString('utf8');
+              const lines = buffer.split(/\r?\n/);
+              // keep the last line if it's incomplete
+              buffer = lines.pop() || '';
+              
+              let updated = false;
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                // Print to console so it goes to bot startup log
+                console.log(`[auto-review-child] ${trimmed}`);
+                
+                // Detect progress lines we want to show in Telegram status
+                if (
+                  (trimmed.includes('Found') && trimmed.includes('product URLs')) ||
+                  trimmed.includes('Checking product:') ||
+                  trimmed.includes('Using Profile') ||
+                  trimmed.includes('Submitting 5-star review') ||
+                  trimmed.includes('Review submitted successfully') ||
+                  trimmed.includes('Product already reviewed') ||
+                  trimmed.includes('Error reviewing product') ||
+                  trimmed.includes('Review form not found')
+                ) {
+                  // Format the line nicely for Telegram
+                  let formatted = trimmed;
+                  if (trimmed.includes('Found') && trimmed.includes('product URLs')) {
+                    const count = trimmed.match(/Found (\d+) product/)?.[1] || '12';
+                    formatted = `📋 Tìm thấy <b>${count} sản phẩm</b> trong mục Flash Sale.`;
+                  } else if (trimmed.includes('Checking product:')) {
+                    const url = trimmed.split('Checking product:')[1].trim();
+                    const basename = url.split('/product/')[1]?.replace(/\/$/, '') || url;
+                    formatted = `🔍 <b>Sản phẩm:</b> <code>${basename}</code>`;
+                  } else if (trimmed.includes('Using Profile')) {
+                    const pName = trimmed.match(/Profile (.*?)( \(|$)/)?.[1] || '';
+                    formatted = `👤 Profile: <b>${pName}</b>`;
+                  } else if (trimmed.includes('Product already reviewed')) {
+                    formatted = `⏭️ <i>Đã được đánh giá trước đó. Bỏ qua.</i>`;
+                  } else if (trimmed.includes('Submitting 5-star review')) {
+                    formatted = `✍️ <b>Đang gửi đánh giá 5 sao...</b>`;
+                  } else if (trimmed.includes('Review submitted successfully')) {
+                    formatted = `✅ <b>Đánh giá thành công!</b>`;
+                  } else if (trimmed.includes('Error reviewing product')) {
+                    formatted = `❌ <b>Gặp lỗi khi gửi đánh giá.</b>`;
+                  } else if (trimmed.includes('Review form not found')) {
+                    formatted = `⚠️ <i>Không thấy form (có thể đã tắt đánh giá). Bỏ qua.</i>`;
+                  }
+                  
+                  lastStatusLines.push(formatted);
+                  if (lastStatusLines.length > 8) {
+                    lastStatusLines.shift(); // keep last 8 status lines
+                  }
+                  updated = true;
+                }
+              }
+              
+              if (updated) {
+                updateTelegramStatus();
+              }
+            };
+
+            child.stdout.on('data', handleOutput);
+            child.stderr.on('data', handleOutput);
+
+            child.on('close', async (code) => {
+              state.active = false;
+              state.childProcess = undefined;
+              
+              const finalMsg = code === 0 
+                ? [
+                    '✅ <b>HOÀN THÀNH TỰ ĐỘNG ĐÁNH GIÁ DERMA!</b>',
+                    '--------------------------------------------',
+                    '🎯 Kịch bản tự động đánh giá sản phẩm Flash Sale đã kết thúc thành công.',
+                    '--------------------------------------------'
+                  ].join('\n')
+                : [
+                    '⚠️ <b>KỊCH BẢN ĐÃ KẾT THÚC VỚI LỖI</b>',
+                    '--------------------------------------------',
+                    `Mã thoát (Exit code): <code>${code}</code>`,
+                    '--------------------------------------------'
+                  ].join('\n');
+
+              await telegram.editMessageText(chatId, statusMsg.message_id, finalMsg).catch(() => {});
+            });
+
+          } catch (err: any) {
+            state.active = false;
+            state.childProcess = undefined;
+            const errMsg = err.message || String(err);
+            await telegram.editMessageText(
+              chatId,
+              statusMsg.message_id,
+              `❌ <b>Lỗi khi chạy kịch bản:</b> ${code(errMsg)}`
+            ).catch(() => {});
+          }
           continue;
         }
 
@@ -879,32 +1640,26 @@ async function main() {
             );
             continue;
           }
-          const profiles = profileResolve.resolved;
+          const resolvedIds = profileResolve.resolved;
+          const profilesToRun = profileResolve.profiles.filter((p) => resolvedIds.includes(p.id));
 
-          const delaySeconds = parsePositiveInt(args.delay, defaultDelaySeconds) || defaultDelaySeconds;
+          const delayRange = parseDelayRange(args.delay, defaultDelaySeconds);
           const profileRunSeconds =
             parsePositiveInt(args.wait || args.runtime || args.runwait, defaultProfileRunSeconds) ||
             defaultProfileRunSeconds;
           const closeAfterRun = parseBoolean(args.close || args.closeprofile, defaultCloseAfterRun);
           state.command = text;
-          await telegram.sendMessage(
-            chatId,
-            [
-              '<b>Đã map profile</b>',
-              `Bạn nhập: ${code(profileResolve.requested.join(', '))}`,
-              `ID sẽ chạy: ${code(profiles.join(', '))}`,
-            ].join('\n'),
-          );
           void runAiAppForProfiles(
             telegram,
             chatId,
             omni,
             app,
-            profiles,
-            delaySeconds,
+            profilesToRun,
+            delayRange,
             profileRunSeconds,
             closeAfterRun,
             mktProxyConfig,
+            gscSyncConfig,
             state,
           );
           continue;

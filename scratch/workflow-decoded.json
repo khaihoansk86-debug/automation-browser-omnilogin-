@@ -1,0 +1,3945 @@
+[
+  {
+    "e": 0
+  },
+  {
+    "d": {
+      "nodes": [
+        {
+          "position": {
+            "x": -1300,
+            "y": 1600
+          },
+          "id": "glldf4c",
+          "data": {
+            "label": "start"
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "javascript-code",
+            "disableBlock": false,
+            "description": "",
+            "timeout": 20,
+            "context": "website",
+            "iframe": "",
+            "code": "const inputStr = omniloginRefData('variables', 'accountListStr') || '';\nconst sep = omniloginRefData('variables', 'sep') || '|';\nconst index = omniloginRefData('runIndex') || 0;\n\nconst accountList = inputStr.split(\"\\n\").filter(x => !!x).map(line => {\n  const [username, password,fa] = line.split(sep);\n\n  return {username, password,fa};\n});\n\nconst account = accountList[index];\nif (!account) {\n  throw new Error(\"Missing account\");\n}\nomniloginSetVariable('account', account)",
+            "preloadScripts": [],
+            "everyNewTab": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "vphdscd",
+          "selected": false,
+          "position": {
+            "x": 460,
+            "y": 430
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 450,
+            "y": 270
+          },
+          "data": {
+            "label": "new-tab",
+            "disableBlock": false,
+            "description": "",
+            "url": "https://www.facebook.com/?locale=vi_VN",
+            "userAgent": "",
+            "active": true,
+            "inGroup": false,
+            "waitTabLoaded": true,
+            "openInNewTab": false,
+            "customUserAgent": false
+          },
+          "type": "BlockBasic",
+          "id": "3egwwn7",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 500,
+            "y": 870
+          },
+          "data": {
+            "label": "conditions",
+            "description": "check login",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "not login",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[name=\"email\"]"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "PdkMX_XtB6-s9JijDtjG6",
+                "name": "logged in",
+                "conditions": [
+                  {
+                    "id": "6o0mJ_azmV9J8s4k0r6U_",
+                    "expressions": [
+                      {
+                        "id": "a1H4JS91WtImyzz6xkWjO",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[href^=\"https://www.facebook.com/profile.php\"]"
+                            },
+                            "id": "Frsqx_fqO3FVEUbJ16k1d"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": false,
+            "retryCount": 10,
+            "retryTimeout": 1
+          },
+          "type": "BlockConditions",
+          "id": "cxdwhol",
+          "measured": {
+            "width": 256,
+            "height": 253
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 910,
+            "y": 270
+          },
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[name=\"email\"]",
+            "description": "clear input",
+            "keysToPress": "",
+            "delay": "(10,50)",
+            "action": "press-key"
+          },
+          "type": "BlockBasic",
+          "id": "dmby34y",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[name=\"email\"]",
+            "description": "username",
+            "keysToPress": "{{variables.account.username}}",
+            "delay": "(10,50)",
+            "action": "multiple-keys"
+          },
+          "id": "vwls6pf",
+          "selected": false,
+          "position": {
+            "x": 920,
+            "y": 410
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 920,
+            "y": 660
+          },
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [],
+            "selector": "[name=\"pass\"]",
+            "description": "password",
+            "keysToPress": "{{variables.account.password}}",
+            "delay": "(10,50)",
+            "action": "multiple-keys"
+          },
+          "type": "BlockBasic",
+          "id": "l28ijp6",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[name=\"pass\"]",
+            "description": "clear input",
+            "keysToPress": "",
+            "delay": "(10,50)",
+            "action": "press-key"
+          },
+          "id": "9is8cod",
+          "selected": false,
+          "position": {
+            "x": 920,
+            "y": 530
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 930,
+            "y": 790
+          },
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click login",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "[type=\"submit\"]",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "type": "BlockBasic",
+          "id": "u9q2gbm",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check 2fa",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "JjmiWjflcXCFiBLlAmXyt",
+                "name": "2fa",
+                "conditions": [
+                  {
+                    "id": "gpA9XkwTWTXErlyNoDIZc",
+                    "expressions": [
+                      {
+                        "id": "TVMhzn_xBDymDpqy8nvPQ",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[method=\"GET\"] div>input"
+                            },
+                            "id": "2MZxIYGjSRP4zzJkU6h9a"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m-w6bjhxmndpc7GrTmHOH",
+                "name": "Path 3",
+                "conditions": [
+                  {
+                    "id": "vZ-EjOj31Qzm8qfkIn7ih",
+                    "expressions": [
+                      {
+                        "id": "u1zTlbw-1Y5pmLOv479Ej",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[role=\"button\"] span"
+                            },
+                            "id": "syvXcP_WpDKEP7Ayg6WGp"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "ZElsNInNkVBG5YDDBuSbA",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span > span::-p-text(\"Can't try another device?\")"
+                            },
+                            "id": "MygK8WSg4Zn7eQHkBYMbB"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "try another way",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[role=\"button\"] span"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "LvQuzBaGSSn4u78R396Sa",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span > span::-p-text(\"Try Another Way\")"
+                            },
+                            "id": "FJ-onO3cj3icCir73PXpM"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "PdkMX_XtB6-s9JijDtjG6",
+                "name": "logged in",
+                "conditions": [
+                  {
+                    "id": "t-kgDs_5GAHdW_OAYaWbA",
+                    "expressions": [
+                      {
+                        "id": "GF2eP85wpaRnoJx3EchA_",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[href^=\"https://www.facebook.com/profile.php\"]"
+                            },
+                            "id": "MT1eR7AfO8FNM6QcwJIUl"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "28vjdgn",
+          "selected": false,
+          "position": {
+            "x": 1270,
+            "y": 450
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 373
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 1810,
+            "y": 1230
+          },
+          "data": {
+            "label": "repeat-task",
+            "disableBlock": false,
+            "repeatFor": "2"
+          },
+          "type": "BlockRepeatTask",
+          "id": "r4c7b2x",
+          "measured": {
+            "width": 192,
+            "height": 167
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "lag web",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "kcpr1n7",
+          "selected": false,
+          "position": {
+            "x": 2130,
+            "y": 1280
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "try any way",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "[role=\"button\"] span",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "9kozfvu",
+          "selected": false,
+          "position": {
+            "x": 1760,
+            "y": 290
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check option 2fa",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "authen app",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "div::-p-text(\"Authentication app\")"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "vmsqk9f",
+          "selected": false,
+          "position": {
+            "x": 1750,
+            "y": 480
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 193
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click authen app",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Authentication app\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "ybwy74n",
+          "selected": false,
+          "position": {
+            "x": 2190,
+            "y": 290
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click continue",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Continue\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "4ob055x",
+          "selected": false,
+          "position": {
+            "x": 2190,
+            "y": 410
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check show 2fa",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "authen app",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[method=\"GET\"] div>input"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "j1g9tt0",
+          "selected": false,
+          "position": {
+            "x": 2180,
+            "y": 580
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 193
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 2690,
+            "y": 240
+          },
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [],
+            "selector": "[method=\"GET\"] div>input",
+            "description": "2fa",
+            "keysToPress": "{{$getOTP([variables.2fa])}}",
+            "delay": "(10,50)",
+            "action": "multiple-keys"
+          },
+          "type": "BlockBasic",
+          "id": "giuutsi",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 2660,
+            "y": -30
+          },
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "insert to variables",
+            "dataList": [
+              {
+                "type": "variable",
+                "name": "2fa",
+                "value": "{{variables.account.fa}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "type": "BlockBasic",
+          "id": "rfzmfcu",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click continue",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Continue\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "j7u1by6",
+          "selected": true,
+          "position": {
+            "x": 2690,
+            "y": 380
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 1060,
+            "y": 1000
+          },
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "logged in",
+            "dataList": [
+              {
+                "type": "table",
+                "name": "e4six",
+                "value": "{{profileId}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              },
+              {
+                "type": "table",
+                "name": "08vyj",
+                "value": "logged in",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "type": "BlockBasic",
+          "id": "7tw0ynh",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 1390,
+            "y": 1010
+          },
+          "data": {
+            "label": "export-data",
+            "disableBlock": false,
+            "name": "autologin_facebook",
+            "refKey": "",
+            "type": "csv",
+            "description": "",
+            "variableName": "",
+            "csvDelimiter": ",",
+            "addBOMHeader": true,
+            "onConflict": "append",
+            "dataToExport": "data-columns"
+          },
+          "type": "BlockBasic",
+          "id": "m2pqzwi",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check logged in",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "check logged in",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[href^=\"https://www.facebook.com/profile.php\"]"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "5n1ukfXBa3-wtNMzK0zrG",
+                "name": "trust device",
+                "conditions": [
+                  {
+                    "id": "VGQbkNhvGtdArSgLT2VxU",
+                    "expressions": [
+                      {
+                        "id": "YY69---1egruQpLn7GDFP",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span>span::-p-text(\"Trust this device\")"
+                            },
+                            "id": "hnUsgRp1F4rF9Ck2Lh0aG"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "-OEJqCYvvDd5PKiQnJgGo",
+                "name": "skip",
+                "conditions": [
+                  {
+                    "id": "EOSyaY8UQvpQ7ZFhinH94",
+                    "expressions": [
+                      {
+                        "id": "wLVS0DOAc0vFm3ThqCC7a",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "div::-p-text(\"Bỏ qua\")"
+                            },
+                            "id": "jvUu13tRROCMLeo5LNNmD"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "ur9NbIpyKfOiRVLYlua9a",
+                "name": "2fa error",
+                "conditions": [
+                  {
+                    "id": "OT2dc4Z0CX-gG02Pm8An6",
+                    "expressions": [
+                      {
+                        "id": "K8qm8Hms1qgXsf5Z9UE2T",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span::-p-text(\"Mã đăng nhập bạn nhập không khớp với mã đã gửi đến điện thoại của bạn. Vui lòng kiểm tra số này và thử lại.\")"
+                            },
+                            "id": "x76-WvglMJ1_gHMw-XZma"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "okq4cpx",
+          "selected": false,
+          "position": {
+            "x": 2600,
+            "y": 730
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 373
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "logged in",
+            "dataList": [
+              {
+                "type": "table",
+                "name": "e4six",
+                "value": "{{profileId}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              },
+              {
+                "type": "table",
+                "name": "08vyj",
+                "value": "logged in",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "id": "17gixlh",
+          "selected": false,
+          "position": {
+            "x": 3500,
+            "y": 640
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "export-data",
+            "disableBlock": false,
+            "name": "autologin_facebook",
+            "refKey": "",
+            "type": "csv",
+            "description": "",
+            "variableName": "",
+            "csvDelimiter": ",",
+            "addBOMHeader": true,
+            "onConflict": "append",
+            "dataToExport": "data-columns"
+          },
+          "id": "wlpmimt",
+          "selected": false,
+          "position": {
+            "x": 3520,
+            "y": 800
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click trust this device",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "span>span::-p-text(\"Trust this device\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "3m1hf0o",
+          "selected": false,
+          "position": {
+            "x": 3040,
+            "y": 870
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 3080,
+            "y": 1290
+          },
+          "data": {
+            "label": "delay",
+            "disableBlock": false,
+            "time": "(7,10)"
+          },
+          "type": "BlockDelay",
+          "id": "x7zne38",
+          "measured": {
+            "width": 192,
+            "height": 116
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "error acc",
+            "dataList": [
+              {
+                "type": "table",
+                "name": "e4six",
+                "value": "{{profileId}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              },
+              {
+                "type": "table",
+                "name": "08vyj",
+                "value": "error acc",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "id": "yrhy5n8",
+          "selected": false,
+          "position": {
+            "x": 1780,
+            "y": -10
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "export-data",
+            "disableBlock": false,
+            "name": "autologin_facebook",
+            "refKey": "",
+            "type": "csv",
+            "description": "",
+            "variableName": "",
+            "csvDelimiter": ",",
+            "addBOMHeader": true,
+            "onConflict": "append",
+            "dataToExport": "data-columns"
+          },
+          "id": "ri3oxwo",
+          "selected": false,
+          "position": {
+            "x": 1800,
+            "y": 130
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": -840,
+            "y": 1570
+          },
+          "data": {
+            "label": "conditions",
+            "description": "check login type",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "c4U4jkRCFduSWKJmgUvnl",
+                "name": "Path 1",
+                "conditions": [
+                  {
+                    "id": "yY4PDcpT4EM7OFSnTytNw",
+                    "expressions": [
+                      {
+                        "id": "ZipUhGEDzN6i6Ok3no7EB",
+                        "items": [
+                          {
+                            "type": "value",
+                            "category": "value",
+                            "data": {
+                              "value": "{{variables.file}}"
+                            },
+                            "id": "QPCqkGEqFN7eSLn6Wq-Fg"
+                          },
+                          {
+                            "category": "compare",
+                            "type": "nq",
+                            "id": "uSK7-AlF3Fdflz-r5yoYK"
+                          },
+                          {
+                            "type": "value",
+                            "category": "value",
+                            "data": {
+                              "value": "true"
+                            },
+                            "id": "oNmGPW5PnFAm9muGKnoba"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": false,
+            "retryCount": 10,
+            "retryTimeout": 1
+          },
+          "type": "BlockConditions",
+          "id": "zh1oy9z",
+          "measured": {
+            "width": 256,
+            "height": 193
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click continue",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "span::-p-text(\"Tiếp tục\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "e0w4uui",
+          "selected": false,
+          "position": {
+            "x": 3120,
+            "y": 460
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click skip",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Bỏ qua\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "ue6isng",
+          "selected": false,
+          "position": {
+            "x": 3010,
+            "y": 1000
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "new-tab",
+            "disableBlock": false,
+            "description": "",
+            "url": "https://www.facebook.com/?locale=vi_VN",
+            "userAgent": "",
+            "active": true,
+            "inGroup": false,
+            "waitTabLoaded": true,
+            "openInNewTab": false,
+            "customUserAgent": false
+          },
+          "id": "b3lkz8b",
+          "selected": false,
+          "position": {
+            "x": -190,
+            "y": 1720
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check login",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "not login",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[name=\"email\"]"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "PdkMX_XtB6-s9JijDtjG6",
+                "name": "logged in",
+                "conditions": [
+                  {
+                    "id": "6o0mJ_azmV9J8s4k0r6U_",
+                    "expressions": [
+                      {
+                        "id": "a1H4JS91WtImyzz6xkWjO",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[href^=\"https://www.facebook.com/profile.php\"]"
+                            },
+                            "id": "Frsqx_fqO3FVEUbJ16k1d"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": false,
+            "retryCount": 10,
+            "retryTimeout": 1
+          },
+          "id": "ig0v0rf",
+          "selected": false,
+          "position": {
+            "x": 500,
+            "y": 2180
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 253
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[name=\"email\"]",
+            "description": "clear input",
+            "keysToPress": "",
+            "delay": "(10,50)",
+            "action": "press-key"
+          },
+          "id": "csq8hlu",
+          "selected": false,
+          "position": {
+            "x": 910,
+            "y": 1580
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[name=\"email\"]",
+            "description": "username",
+            "keysToPress": "{{spreadSheets.data.[profileId].username}}",
+            "delay": "(10,50)",
+            "action": "multiple-keys"
+          },
+          "id": "2780xhq",
+          "selected": false,
+          "position": {
+            "x": 920,
+            "y": 1720
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [],
+            "selector": "[name=\"pass\"]",
+            "description": "password",
+            "keysToPress": "{{spreadSheets.data.[profileId].pass}}",
+            "delay": "(10,50)",
+            "action": "multiple-keys"
+          },
+          "id": "myoca59",
+          "selected": false,
+          "position": {
+            "x": 920,
+            "y": 1970
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[name=\"pass\"]",
+            "description": "clear input",
+            "keysToPress": "",
+            "delay": "(10,50)",
+            "action": "press-key"
+          },
+          "id": "9fag1w7",
+          "selected": false,
+          "position": {
+            "x": 920,
+            "y": 1840
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click login",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "[aria-label=\"Đăng nhập\"]",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "vkj64ti",
+          "selected": false,
+          "position": {
+            "x": 930,
+            "y": 2100
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check 2fa",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "JjmiWjflcXCFiBLlAmXyt",
+                "name": "2fa",
+                "conditions": [
+                  {
+                    "id": "gpA9XkwTWTXErlyNoDIZc",
+                    "expressions": [
+                      {
+                        "id": "TVMhzn_xBDymDpqy8nvPQ",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[method=\"GET\"] div>input"
+                            },
+                            "id": "2MZxIYGjSRP4zzJkU6h9a"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m-w6bjhxmndpc7GrTmHOH",
+                "name": "Path 3",
+                "conditions": [
+                  {
+                    "id": "vZ-EjOj31Qzm8qfkIn7ih",
+                    "expressions": [
+                      {
+                        "id": "u1zTlbw-1Y5pmLOv479Ej",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[role=\"button\"] span"
+                            },
+                            "id": "syvXcP_WpDKEP7Ayg6WGp"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "ZElsNInNkVBG5YDDBuSbA",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span > span::-p-text(\"Can't try another device?\")"
+                            },
+                            "id": "MygK8WSg4Zn7eQHkBYMbB"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "try another way",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[role=\"button\"] span"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "LvQuzBaGSSn4u78R396Sa",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span > span::-p-text(\"Try Another Way\")"
+                            },
+                            "id": "FJ-onO3cj3icCir73PXpM"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "PdkMX_XtB6-s9JijDtjG6",
+                "name": "logged in",
+                "conditions": [
+                  {
+                    "id": "t-kgDs_5GAHdW_OAYaWbA",
+                    "expressions": [
+                      {
+                        "id": "GF2eP85wpaRnoJx3EchA_",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[href^=\"https://www.facebook.com/profile.php\"]"
+                            },
+                            "id": "MT1eR7AfO8FNM6QcwJIUl"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "rhjpzsx",
+          "selected": false,
+          "position": {
+            "x": 1270,
+            "y": 1760
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 373
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "repeat-task",
+            "disableBlock": false,
+            "repeatFor": "2"
+          },
+          "id": "gomq4a7",
+          "selected": false,
+          "position": {
+            "x": 1810,
+            "y": 2540
+          },
+          "type": "BlockRepeatTask",
+          "measured": {
+            "width": 192,
+            "height": 167
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "lag web",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "nethjpr",
+          "selected": false,
+          "position": {
+            "x": 2130,
+            "y": 2590
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "try any way",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "[role=\"button\"] span",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "3zz2zdu",
+          "selected": false,
+          "position": {
+            "x": 1760,
+            "y": 1600
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check option 2fa",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "authen app",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "div::-p-text(\"Authentication app\")"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "7kkptc8",
+          "selected": false,
+          "position": {
+            "x": 1750,
+            "y": 1790
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 193
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click authen app",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Authentication app\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "nfuoywi",
+          "selected": false,
+          "position": {
+            "x": 2190,
+            "y": 1600
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click continue",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Continue\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "5mpn53s",
+          "selected": false,
+          "position": {
+            "x": 2190,
+            "y": 1720
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check show 2fa",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "authen app",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[method=\"GET\"] div>input"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "68phmpq",
+          "selected": false,
+          "position": {
+            "x": 2180,
+            "y": 1890
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 193
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [],
+            "selector": "[method=\"GET\"] div>input",
+            "description": "2fa",
+            "keysToPress": "{{$getOTP([variables.2fa])}}",
+            "delay": "(10,50)",
+            "action": "multiple-keys"
+          },
+          "id": "6ee7kp9",
+          "selected": false,
+          "position": {
+            "x": 2700,
+            "y": 1550
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "insert to variables",
+            "dataList": [
+              {
+                "type": "variable",
+                "name": "2fa",
+                "value": "{{spreadSheets.data.[profileId].2fa}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "id": "m8qowhk",
+          "selected": false,
+          "position": {
+            "x": 2650,
+            "y": 1270
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click continue",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Continue\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "7exdfsy",
+          "selected": false,
+          "position": {
+            "x": 2470,
+            "y": 1700
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "logged in",
+            "dataList": [
+              {
+                "type": "table",
+                "name": "e4six",
+                "value": "{{profileId}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              },
+              {
+                "type": "table",
+                "name": "08vyj",
+                "value": "logged in",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "id": "pqp5dtl",
+          "selected": false,
+          "position": {
+            "x": 1060,
+            "y": 2310
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "export-data",
+            "disableBlock": false,
+            "name": "autologin_facebook",
+            "refKey": "",
+            "type": "csv",
+            "description": "",
+            "variableName": "",
+            "csvDelimiter": ",",
+            "addBOMHeader": true,
+            "onConflict": "append",
+            "dataToExport": "data-columns"
+          },
+          "id": "i4fra06",
+          "selected": false,
+          "position": {
+            "x": 1390,
+            "y": 2320
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "conditions",
+            "description": "check logged in",
+            "disableBlock": false,
+            "details": [
+              {
+                "id": "rWoNymHyVDsIHvS43Wwqi",
+                "name": "check logged in",
+                "conditions": [
+                  {
+                    "id": "TZUrf6Ttnvd2FAFNuZHUx",
+                    "expressions": [
+                      {
+                        "id": "qNXjaDq3F0f5D5O4uQdiu",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "[href^=\"https://www.facebook.com/profile.php\"]"
+                            },
+                            "id": "NfBjS9Xr01L38wHCWUYRt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "5n1ukfXBa3-wtNMzK0zrG",
+                "name": "trust device",
+                "conditions": [
+                  {
+                    "id": "VGQbkNhvGtdArSgLT2VxU",
+                    "expressions": [
+                      {
+                        "id": "YY69---1egruQpLn7GDFP",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span>span::-p-text(\"Trust this device\")"
+                            },
+                            "id": "hnUsgRp1F4rF9Ck2Lh0aG"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "GV8Oq13D-9arUrOKZHi9d",
+                    "expressions": [
+                      {
+                        "id": "sbEl6E0fV4O5vSFgvb8UI",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span::-p-text(\"Tin cậy thiết bị này\")"
+                            },
+                            "id": "CLLfdEmskcU0PmIpXxTqt"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "-OEJqCYvvDd5PKiQnJgGo",
+                "name": "skip",
+                "conditions": [
+                  {
+                    "id": "EOSyaY8UQvpQ7ZFhinH94",
+                    "expressions": [
+                      {
+                        "id": "wLVS0DOAc0vFm3ThqCC7a",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "div::-p-text(\"Bỏ qua\")"
+                            },
+                            "id": "jvUu13tRROCMLeo5LNNmD"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "ur9NbIpyKfOiRVLYlua9a",
+                "name": "2fa error",
+                "conditions": [
+                  {
+                    "id": "OT2dc4Z0CX-gG02Pm8An6",
+                    "expressions": [
+                      {
+                        "id": "K8qm8Hms1qgXsf5Z9UE2T",
+                        "items": [
+                          {
+                            "type": "element#visible",
+                            "category": "value",
+                            "data": {
+                              "selector": "span::-p-text(\"Mã đăng nhập bạn nhập không khớp với mã đã gửi đến điện thoại của bạn. Vui lòng kiểm tra số này và thử lại.\")"
+                            },
+                            "id": "x76-WvglMJ1_gHMw-XZma"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "asyncConditions": false,
+            "retryConditions": true,
+            "retryCount": 20,
+            "retryTimeout": 1
+          },
+          "id": "9lyywux",
+          "selected": false,
+          "position": {
+            "x": 2600,
+            "y": 2040
+          },
+          "type": "BlockConditions",
+          "measured": {
+            "width": 256,
+            "height": 373
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "logged in",
+            "dataList": [
+              {
+                "type": "table",
+                "name": "e4six",
+                "value": "{{profileId}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              },
+              {
+                "type": "table",
+                "name": "08vyj",
+                "value": "logged in",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "id": "3e39j6q",
+          "selected": false,
+          "position": {
+            "x": 3500,
+            "y": 1950
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "export-data",
+            "disableBlock": false,
+            "name": "autologin_facebook",
+            "refKey": "",
+            "type": "csv",
+            "description": "",
+            "variableName": "",
+            "csvDelimiter": ",",
+            "addBOMHeader": true,
+            "onConflict": "append",
+            "dataToExport": "data-columns"
+          },
+          "id": "7mxq6ai",
+          "selected": false,
+          "position": {
+            "x": 3520,
+            "y": 2110
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click trust this device",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "span>span::-p-text(\"Trust this device\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "uw3nns6",
+          "selected": false,
+          "position": {
+            "x": 3040,
+            "y": 2180
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "delay",
+            "disableBlock": false,
+            "time": "(7,10)"
+          },
+          "id": "4boxijj",
+          "selected": false,
+          "position": {
+            "x": 3080,
+            "y": 2670
+          },
+          "type": "BlockDelay",
+          "measured": {
+            "width": 192,
+            "height": 116
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "insert-data",
+            "disableBlock": false,
+            "description": "error acc",
+            "dataList": [
+              {
+                "type": "table",
+                "name": "e4six",
+                "value": "{{profileId}}",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              },
+              {
+                "type": "table",
+                "name": "08vyj",
+                "value": "error acc",
+                "filePath": "",
+                "isFile": false,
+                "action": "default"
+              }
+            ]
+          },
+          "id": "bu89n7d",
+          "selected": false,
+          "position": {
+            "x": 1480,
+            "y": 1270
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "export-data",
+            "disableBlock": false,
+            "name": "autologin_facebook",
+            "refKey": "",
+            "type": "csv",
+            "description": "",
+            "variableName": "",
+            "csvDelimiter": ",",
+            "addBOMHeader": true,
+            "onConflict": "append",
+            "dataToExport": "data-columns"
+          },
+          "id": "mva8rzv",
+          "selected": false,
+          "position": {
+            "x": 1800,
+            "y": 1440
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click continue",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "span::-p-text(\"Tiếp tục\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false,
+            "onError": {
+              "retry": false,
+              "enable": true,
+              "retryTimes": 1,
+              "retryInterval": 2,
+              "toDo": "fallback",
+              "insertData": false,
+              "dataToInsert": []
+            }
+          },
+          "id": "u2cjz91",
+          "selected": false,
+          "position": {
+            "x": 2810,
+            "y": 1830
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 95
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click skip",
+            "findBy": "cssSelector",
+            "waitForSelector": false,
+            "waitSelectorTimeout": 15,
+            "selector": "div::-p-text(\"Bỏ qua\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "aavqcax",
+          "selected": false,
+          "position": {
+            "x": 3020,
+            "y": 2340
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "position": {
+            "x": 340,
+            "y": 1880
+          },
+          "data": {
+            "label": "spreadsheet",
+            "disableBlock": false,
+            "range": "A1:D10000",
+            "localpath": "{{variables.fileAccount}}",
+            "refKey": "data",
+            "type": "get",
+            "description": "",
+            "customData": "",
+            "dataColumn": "",
+            "saveData": true,
+            "assignVariable": false,
+            "variableName": "",
+            "firstRowAsKey": true,
+            "primaryKey": "profileId",
+            "valueIsArray": false,
+            "keysAsFirstRow": true,
+            "dataFrom": "data-columns",
+            "exactValue": ""
+          },
+          "type": "BlockBasic",
+          "id": "y1zid7a",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[method=\"GET\"] div>input",
+            "description": "2fa",
+            "keysToPress": "{{$getOTP([variables.2fa])}}",
+            "delay": "(10,50)",
+            "action": "press-key"
+          },
+          "id": "2q4ynmy",
+          "selected": false,
+          "position": {
+            "x": 2690,
+            "y": 1420
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click trust this device",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "span>span::-p-text(\"Tin cậy thiết bị này\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "deiysse",
+          "selected": false,
+          "position": {
+            "x": 3390,
+            "y": 2290
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "event-click",
+            "disableBlock": false,
+            "description": "click trust this device",
+            "findBy": "cssSelector",
+            "waitForSelector": true,
+            "waitSelectorTimeout": 15,
+            "selector": "span>span::-p-text(\"Tin cậy thiết bị này\")",
+            "action": "click",
+            "clickCount": 3,
+            "humanize": false,
+            "button": "left",
+            "modifiers": [],
+            "markEl": false,
+            "inViewport": false,
+            "multiple": false
+          },
+          "id": "vvm3pfm",
+          "selected": false,
+          "position": {
+            "x": 3380,
+            "y": 970
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        },
+        {
+          "data": {
+            "label": "press-key",
+            "disableBlock": false,
+            "keys": [
+              "Ctrl",
+              "a",
+              "Backspace"
+            ],
+            "selector": "[method=\"GET\"] div>input",
+            "description": "2fa",
+            "keysToPress": "{{$getOTP([variables.2fa])}}",
+            "delay": "(10,50)",
+            "action": "press-key"
+          },
+          "id": "gwaz1to",
+          "selected": false,
+          "position": {
+            "x": 2680,
+            "y": 110
+          },
+          "type": "BlockBasic",
+          "measured": {
+            "width": 192,
+            "height": 73
+          },
+          "dragging": false
+        }
+      ],
+      "edges": [
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "cxdwhol",
+          "sourceHandle": "cxdwhol-output-rWoNymHyVDsIHvS43Wwqi",
+          "target": "dmby34y",
+          "targetHandle": "dmby34y-input-1",
+          "id": "xy-edge__cxdwholcxdwhol-output-rWoNymHyVDsIHvS43Wwqi-dmby34ydmby34y-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "dmby34y",
+          "sourceHandle": "dmby34y-output-1",
+          "target": "vwls6pf",
+          "targetHandle": "vwls6pf-input-1",
+          "id": "xy-edge__dmby34ydmby34y-output-1-vwls6pfvwls6pf-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "vwls6pf",
+          "target": "9is8cod",
+          "sourceHandle": "vwls6pf-output-1",
+          "targetHandle": "9is8cod-input-1",
+          "selected": false,
+          "id": "xy-edge__vwls6pfvwls6pf-output-1-9is8cod9is8cod-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "9is8cod",
+          "sourceHandle": "9is8cod-output-1",
+          "target": "l28ijp6",
+          "targetHandle": "l28ijp6-input-1",
+          "id": "xy-edge__9is8cod9is8cod-output-1-l28ijp6l28ijp6-input-1",
+          "selected": false
+        },
+        {
+          "id": "edge-eil1m24",
+          "source": "l28ijp6",
+          "target": "u9q2gbm",
+          "sourceHandle": "l28ijp6-output-1",
+          "targetHandle": "u9q2gbm-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "vphdscd",
+          "sourceHandle": "vphdscd-output-1",
+          "target": "cxdwhol",
+          "targetHandle": "cxdwhol-input-1",
+          "selected": false,
+          "id": "xy-edge__vphdscdvphdscd-output-1-cxdwholcxdwhol-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "3egwwn7",
+          "sourceHandle": "3egwwn7-output-1",
+          "target": "vphdscd",
+          "targetHandle": "vphdscd-input-1",
+          "selected": false,
+          "id": "xy-edge__3egwwn73egwwn7-output-1-vphdscdvphdscd-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "u9q2gbm",
+          "sourceHandle": "u9q2gbm-output-1",
+          "target": "28vjdgn",
+          "targetHandle": "28vjdgn-input-1",
+          "id": "xy-edge__u9q2gbmu9q2gbm-output-1-28vjdgn28vjdgn-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "28vjdgn",
+          "sourceHandle": "28vjdgn-output-fallback",
+          "target": "r4c7b2x",
+          "targetHandle": "r4c7b2x-input-1",
+          "id": "xy-edge__28vjdgn28vjdgn-output-fallback-r4c7b2xr4c7b2x-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "r4c7b2x",
+          "sourceHandle": "r4c7b2x-output-2",
+          "target": "3egwwn7",
+          "targetHandle": "3egwwn7-input-1",
+          "id": "xy-edge__r4c7b2xr4c7b2x-output-2-3egwwn73egwwn7-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "r4c7b2x",
+          "sourceHandle": "r4c7b2x-output-1",
+          "target": "kcpr1n7",
+          "targetHandle": "kcpr1n7-input-1",
+          "id": "xy-edge__r4c7b2xr4c7b2x-output-1-kcpr1n7kcpr1n7-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "28vjdgn",
+          "sourceHandle": "28vjdgn-output-rWoNymHyVDsIHvS43Wwqi",
+          "target": "9kozfvu",
+          "targetHandle": "9kozfvu-input-1",
+          "id": "xy-edge__28vjdgn28vjdgn-output-rWoNymHyVDsIHvS43Wwqi-9kozfvu9kozfvu-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "9kozfvu",
+          "sourceHandle": "9kozfvu-output-1",
+          "target": "vmsqk9f",
+          "targetHandle": "vmsqk9f-input-1",
+          "id": "xy-edge__9kozfvu9kozfvu-output-1-vmsqk9fvmsqk9f-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "vmsqk9f",
+          "sourceHandle": "vmsqk9f-output-fallback",
+          "target": "r4c7b2x",
+          "targetHandle": "r4c7b2x-input-1",
+          "id": "xy-edge__vmsqk9fvmsqk9f-output-fallback-r4c7b2xr4c7b2x-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "vmsqk9f",
+          "sourceHandle": "vmsqk9f-output-rWoNymHyVDsIHvS43Wwqi",
+          "target": "ybwy74n",
+          "targetHandle": "ybwy74n-input-1",
+          "id": "xy-edge__vmsqk9fvmsqk9f-output-rWoNymHyVDsIHvS43Wwqi-ybwy74nybwy74n-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "ybwy74n",
+          "sourceHandle": "ybwy74n-output-1",
+          "target": "4ob055x",
+          "targetHandle": "4ob055x-input-1",
+          "id": "xy-edge__ybwy74nybwy74n-output-1-4ob055x4ob055x-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "4ob055x",
+          "sourceHandle": "4ob055x-output-1",
+          "target": "j1g9tt0",
+          "targetHandle": "j1g9tt0-input-1",
+          "id": "xy-edge__4ob055x4ob055x-output-1-j1g9tt0j1g9tt0-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "j1g9tt0",
+          "sourceHandle": "j1g9tt0-output-fallback",
+          "target": "r4c7b2x",
+          "targetHandle": "r4c7b2x-input-1",
+          "id": "xy-edge__j1g9tt0j1g9tt0-output-fallback-r4c7b2xr4c7b2x-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "j1g9tt0",
+          "sourceHandle": "j1g9tt0-output-rWoNymHyVDsIHvS43Wwqi",
+          "target": "rfzmfcu",
+          "targetHandle": "rfzmfcu-input-1",
+          "id": "xy-edge__j1g9tt0j1g9tt0-output-rWoNymHyVDsIHvS43Wwqi-rfzmfcurfzmfcu-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "giuutsi",
+          "sourceHandle": "giuutsi-output-1",
+          "target": "j7u1by6",
+          "targetHandle": "j7u1by6-input-1",
+          "id": "xy-edge__giuutsigiuutsi-output-1-j7u1by6j7u1by6-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "cxdwhol",
+          "sourceHandle": "cxdwhol-output-PdkMX_XtB6-s9JijDtjG6",
+          "target": "7tw0ynh",
+          "targetHandle": "7tw0ynh-input-1",
+          "id": "xy-edge__cxdwholcxdwhol-output-PdkMX_XtB6-s9JijDtjG6-7tw0ynh7tw0ynh-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "7tw0ynh",
+          "sourceHandle": "7tw0ynh-output-1",
+          "target": "m2pqzwi",
+          "targetHandle": "m2pqzwi-input-1",
+          "id": "xy-edge__7tw0ynh7tw0ynh-output-1-m2pqzwim2pqzwi-input-1",
+          "selected": false
+        },
+        {
+          "selected": false,
+          "target": "wlpmimt",
+          "source": "17gixlh",
+          "id": "edge-sd2qOia5bOxC_fkW8Ka09",
+          "targetHandle": "wlpmimt-input-1",
+          "sourceHandle": "17gixlh-output-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "okq4cpx",
+          "sourceHandle": "okq4cpx-output-rWoNymHyVDsIHvS43Wwqi",
+          "target": "17gixlh",
+          "targetHandle": "17gixlh-input-1",
+          "id": "xy-edge__okq4cpxokq4cpx-output-rWoNymHyVDsIHvS43Wwqi-17gixlh17gixlh-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "okq4cpx",
+          "sourceHandle": "okq4cpx-output-fallback",
+          "target": "r4c7b2x",
+          "targetHandle": "r4c7b2x-input-1",
+          "id": "xy-edge__okq4cpxokq4cpx-output-fallback-r4c7b2xr4c7b2x-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "cxdwhol",
+          "sourceHandle": "cxdwhol-output-fallback",
+          "target": "r4c7b2x",
+          "targetHandle": "r4c7b2x-input-1",
+          "id": "xy-edge__cxdwholcxdwhol-output-fallback-r4c7b2xr4c7b2x-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "okq4cpx",
+          "sourceHandle": "okq4cpx-output-5n1ukfXBa3-wtNMzK0zrG",
+          "target": "3m1hf0o",
+          "targetHandle": "3m1hf0o-input-1",
+          "id": "xy-edge__okq4cpxokq4cpx-output-5n1ukfXBa3-wtNMzK0zrG-3m1hf0o3m1hf0o-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "3m1hf0o",
+          "sourceHandle": "3m1hf0o-output-1",
+          "target": "x7zne38",
+          "targetHandle": "x7zne38-input-1",
+          "id": "xy-edge__3m1hf0o3m1hf0o-output-1-x7zne38x7zne38-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "x7zne38",
+          "sourceHandle": "x7zne38-output-1",
+          "target": "okq4cpx",
+          "targetHandle": "okq4cpx-input-1",
+          "id": "xy-edge__x7zne38x7zne38-output-1-okq4cpxokq4cpx-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "28vjdgn",
+          "sourceHandle": "28vjdgn-output-PdkMX_XtB6-s9JijDtjG6",
+          "target": "7tw0ynh",
+          "targetHandle": "7tw0ynh-input-1",
+          "selected": false,
+          "id": "xy-edge__28vjdgn28vjdgn-output-PdkMX_XtB6-s9JijDtjG6-7tw0ynh7tw0ynh-input-1"
+        },
+        {
+          "selected": false,
+          "target": "ri3oxwo",
+          "source": "yrhy5n8",
+          "id": "edge-mN3v3xPTHThsIRYK6TDqA",
+          "targetHandle": "ri3oxwo-input-1",
+          "sourceHandle": "yrhy5n8-output-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "28vjdgn",
+          "sourceHandle": "28vjdgn-output-m-w6bjhxmndpc7GrTmHOH",
+          "target": "yrhy5n8",
+          "targetHandle": "yrhy5n8-input-1",
+          "id": "xy-edge__28vjdgn28vjdgn-output-m-w6bjhxmndpc7GrTmHOH-yrhy5n8yrhy5n8-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "glldf4c",
+          "sourceHandle": "glldf4c-output-1",
+          "target": "zh1oy9z",
+          "targetHandle": "zh1oy9z-input-1",
+          "selected": false,
+          "id": "xy-edge__glldf4cglldf4c-output-1-zh1oy9zzh1oy9z-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "zh1oy9z",
+          "sourceHandle": "zh1oy9z-output-c4U4jkRCFduSWKJmgUvnl",
+          "target": "3egwwn7",
+          "targetHandle": "3egwwn7-input-1",
+          "id": "xy-edge__zh1oy9zzh1oy9z-output-c4U4jkRCFduSWKJmgUvnl-3egwwn73egwwn7-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "28vjdgn",
+          "sourceHandle": "28vjdgn-output-JjmiWjflcXCFiBLlAmXyt",
+          "target": "rfzmfcu",
+          "targetHandle": "rfzmfcu-input-1",
+          "id": "xy-edge__28vjdgn28vjdgn-output-JjmiWjflcXCFiBLlAmXyt-rfzmfcurfzmfcu-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "e0w4uui",
+          "sourceHandle": "e0w4uui-output-1",
+          "target": "okq4cpx",
+          "targetHandle": "okq4cpx-input-1",
+          "id": "xy-edge__e0w4uuie0w4uui-output-1-okq4cpxokq4cpx-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "okq4cpx",
+          "sourceHandle": "okq4cpx-output--OEJqCYvvDd5PKiQnJgGo",
+          "target": "ue6isng",
+          "targetHandle": "ue6isng-input-1",
+          "id": "xy-edge__okq4cpxokq4cpx-output--OEJqCYvvDd5PKiQnJgGo-ue6isngue6isng-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "ue6isng",
+          "sourceHandle": "ue6isng-output-1",
+          "target": "x7zne38",
+          "targetHandle": "x7zne38-input-1",
+          "id": "xy-edge__ue6isngue6isng-output-1-x7zne38x7zne38-input-1",
+          "selected": false
+        },
+        {
+          "selected": false,
+          "target": "csq8hlu",
+          "source": "ig0v0rf",
+          "id": "edge-1P2S-iSxRtpy6sBrpHFOi",
+          "targetHandle": "csq8hlu-input-1",
+          "sourceHandle": "ig0v0rf-output-rWoNymHyVDsIHvS43Wwqi"
+        },
+        {
+          "selected": false,
+          "target": "2780xhq",
+          "source": "csq8hlu",
+          "id": "edge-4Lub5ftVx286OpCmKXi0m",
+          "targetHandle": "2780xhq-input-1",
+          "sourceHandle": "csq8hlu-output-1"
+        },
+        {
+          "selected": false,
+          "target": "9fag1w7",
+          "source": "2780xhq",
+          "id": "edge-8MxdQS6qGobY8nN02loqS",
+          "targetHandle": "9fag1w7-input-1",
+          "sourceHandle": "2780xhq-output-1"
+        },
+        {
+          "selected": false,
+          "target": "myoca59",
+          "source": "9fag1w7",
+          "id": "edge-yCpBurfu1RcWaUSpxVhWn",
+          "targetHandle": "myoca59-input-1",
+          "sourceHandle": "9fag1w7-output-1"
+        },
+        {
+          "selected": false,
+          "target": "vkj64ti",
+          "source": "myoca59",
+          "id": "edge-wbQBO6Ifi7O5G70_545Xn",
+          "targetHandle": "vkj64ti-input-1",
+          "sourceHandle": "myoca59-output-1"
+        },
+        {
+          "selected": false,
+          "target": "rhjpzsx",
+          "source": "vkj64ti",
+          "id": "edge-kNg669puOmU_U0IYt41cC",
+          "targetHandle": "rhjpzsx-input-1",
+          "sourceHandle": "vkj64ti-output-1"
+        },
+        {
+          "selected": false,
+          "target": "gomq4a7",
+          "source": "rhjpzsx",
+          "id": "edge-H_k-LGTjOVtWcOwqqOoG2",
+          "targetHandle": "gomq4a7-input-1",
+          "sourceHandle": "rhjpzsx-output-fallback"
+        },
+        {
+          "selected": false,
+          "target": "b3lkz8b",
+          "source": "gomq4a7",
+          "id": "edge-v_cFnO572ESjF2UIf1cNC",
+          "targetHandle": "b3lkz8b-input-1",
+          "sourceHandle": "gomq4a7-output-2"
+        },
+        {
+          "selected": false,
+          "target": "nethjpr",
+          "source": "gomq4a7",
+          "id": "edge-Sfwvx6XjhM7reLuiB0udp",
+          "targetHandle": "nethjpr-input-1",
+          "sourceHandle": "gomq4a7-output-1"
+        },
+        {
+          "selected": false,
+          "target": "3zz2zdu",
+          "source": "rhjpzsx",
+          "id": "edge-ZdTaW20oE4ewTL5WUNl-6",
+          "targetHandle": "3zz2zdu-input-1",
+          "sourceHandle": "rhjpzsx-output-rWoNymHyVDsIHvS43Wwqi"
+        },
+        {
+          "selected": false,
+          "target": "7kkptc8",
+          "source": "3zz2zdu",
+          "id": "edge-_ink8d-bdo2Z-sMwFEeGe",
+          "targetHandle": "7kkptc8-input-1",
+          "sourceHandle": "3zz2zdu-output-1"
+        },
+        {
+          "selected": false,
+          "target": "gomq4a7",
+          "source": "7kkptc8",
+          "id": "edge-DVVaM6z9GRqaDhHy9WKBU",
+          "targetHandle": "gomq4a7-input-1",
+          "sourceHandle": "7kkptc8-output-fallback"
+        },
+        {
+          "selected": false,
+          "target": "nfuoywi",
+          "source": "7kkptc8",
+          "id": "edge-hPs9LRGfnjlxBB6Y1I9P8",
+          "targetHandle": "nfuoywi-input-1",
+          "sourceHandle": "7kkptc8-output-rWoNymHyVDsIHvS43Wwqi"
+        },
+        {
+          "selected": false,
+          "target": "5mpn53s",
+          "source": "nfuoywi",
+          "id": "edge-zbUmgC91b6FtdKxbf3s3L",
+          "targetHandle": "5mpn53s-input-1",
+          "sourceHandle": "nfuoywi-output-1"
+        },
+        {
+          "selected": false,
+          "target": "68phmpq",
+          "source": "5mpn53s",
+          "id": "edge-bwvFjKKlcQ-uWrQy7McAC",
+          "targetHandle": "68phmpq-input-1",
+          "sourceHandle": "5mpn53s-output-1"
+        },
+        {
+          "selected": false,
+          "target": "gomq4a7",
+          "source": "68phmpq",
+          "id": "edge-Rdjy202vxk-1NO8Pi5VYn",
+          "targetHandle": "gomq4a7-input-1",
+          "sourceHandle": "68phmpq-output-fallback"
+        },
+        {
+          "selected": false,
+          "target": "m8qowhk",
+          "source": "68phmpq",
+          "id": "edge-p6WCKVnjOBtRi8Skk1yss",
+          "targetHandle": "m8qowhk-input-1",
+          "sourceHandle": "68phmpq-output-rWoNymHyVDsIHvS43Wwqi"
+        },
+        {
+          "selected": false,
+          "target": "7exdfsy",
+          "source": "6ee7kp9",
+          "id": "edge-RgqDzGCnOiYZGeyiLRvp4",
+          "targetHandle": "7exdfsy-input-1",
+          "sourceHandle": "6ee7kp9-output-1"
+        },
+        {
+          "selected": false,
+          "target": "pqp5dtl",
+          "source": "ig0v0rf",
+          "id": "edge-sec7UgKRCy_yn3cHj_wxH",
+          "targetHandle": "pqp5dtl-input-1",
+          "sourceHandle": "ig0v0rf-output-PdkMX_XtB6-s9JijDtjG6"
+        },
+        {
+          "selected": false,
+          "target": "i4fra06",
+          "source": "pqp5dtl",
+          "id": "edge-UaeqPl5Nd8zlmaEKdySoM",
+          "targetHandle": "i4fra06-input-1",
+          "sourceHandle": "pqp5dtl-output-1"
+        },
+        {
+          "selected": false,
+          "target": "7mxq6ai",
+          "source": "3e39j6q",
+          "id": "edge-9O4DWCoua1PPcL2nBfcWy",
+          "targetHandle": "7mxq6ai-input-1",
+          "sourceHandle": "3e39j6q-output-1"
+        },
+        {
+          "selected": false,
+          "target": "3e39j6q",
+          "source": "9lyywux",
+          "id": "edge-h4NznQhKtObiw7_2u0XBg",
+          "targetHandle": "3e39j6q-input-1",
+          "sourceHandle": "9lyywux-output-rWoNymHyVDsIHvS43Wwqi"
+        },
+        {
+          "selected": false,
+          "target": "gomq4a7",
+          "source": "9lyywux",
+          "id": "edge-QXl3_QnZEkG1Q0cs9Vb3d",
+          "targetHandle": "gomq4a7-input-1",
+          "sourceHandle": "9lyywux-output-fallback"
+        },
+        {
+          "selected": false,
+          "target": "gomq4a7",
+          "source": "ig0v0rf",
+          "id": "edge-cDjRNtGrtUis6hZoJqvAd",
+          "targetHandle": "gomq4a7-input-1",
+          "sourceHandle": "ig0v0rf-output-fallback"
+        },
+        {
+          "selected": false,
+          "target": "uw3nns6",
+          "source": "9lyywux",
+          "id": "edge--SdQv2_cB2uQNAEa83kqg",
+          "targetHandle": "uw3nns6-input-1",
+          "sourceHandle": "9lyywux-output-5n1ukfXBa3-wtNMzK0zrG"
+        },
+        {
+          "selected": false,
+          "target": "4boxijj",
+          "source": "uw3nns6",
+          "id": "edge-jsXOqqY_CObRJjl373thk",
+          "targetHandle": "4boxijj-input-1",
+          "sourceHandle": "uw3nns6-output-1"
+        },
+        {
+          "selected": false,
+          "target": "9lyywux",
+          "source": "4boxijj",
+          "id": "edge-frdgys-CPJHwiPXrC5oid",
+          "targetHandle": "9lyywux-input-1",
+          "sourceHandle": "4boxijj-output-1"
+        },
+        {
+          "selected": false,
+          "target": "pqp5dtl",
+          "source": "rhjpzsx",
+          "id": "edge-SJyh33NO6jk0JEvu7ZrOH",
+          "targetHandle": "pqp5dtl-input-1",
+          "sourceHandle": "rhjpzsx-output-PdkMX_XtB6-s9JijDtjG6"
+        },
+        {
+          "selected": false,
+          "target": "mva8rzv",
+          "source": "bu89n7d",
+          "id": "edge-xMIa-aF8sHuLR5UCaYAf4",
+          "targetHandle": "mva8rzv-input-1",
+          "sourceHandle": "bu89n7d-output-1"
+        },
+        {
+          "selected": false,
+          "target": "bu89n7d",
+          "source": "rhjpzsx",
+          "id": "edge-dX3blo79kaQiSbi_JiAUu",
+          "targetHandle": "bu89n7d-input-1",
+          "sourceHandle": "rhjpzsx-output-m-w6bjhxmndpc7GrTmHOH"
+        },
+        {
+          "selected": false,
+          "target": "m8qowhk",
+          "source": "rhjpzsx",
+          "id": "edge-EPLcs2l68TI7WUkZTI4Xj",
+          "targetHandle": "m8qowhk-input-1",
+          "sourceHandle": "rhjpzsx-output-JjmiWjflcXCFiBLlAmXyt"
+        },
+        {
+          "selected": false,
+          "target": "9lyywux",
+          "source": "u2cjz91",
+          "id": "edge-MtLuzPrHeGXMCDxybBAR6",
+          "targetHandle": "9lyywux-input-1",
+          "sourceHandle": "u2cjz91-output-1"
+        },
+        {
+          "selected": false,
+          "target": "aavqcax",
+          "source": "9lyywux",
+          "id": "edge-2in7DizGJdBw65TCevGs4",
+          "targetHandle": "aavqcax-input-1",
+          "sourceHandle": "9lyywux-output--OEJqCYvvDd5PKiQnJgGo"
+        },
+        {
+          "selected": false,
+          "target": "4boxijj",
+          "source": "aavqcax",
+          "id": "edge-YN8NPvdPOKQEbuV1PRtmT",
+          "targetHandle": "4boxijj-input-1",
+          "sourceHandle": "aavqcax-output-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "zh1oy9z",
+          "sourceHandle": "zh1oy9z-output-fallback",
+          "target": "b3lkz8b",
+          "targetHandle": "b3lkz8b-input-1",
+          "id": "xy-edge__zh1oy9zzh1oy9z-output-fallback-b3lkz8bb3lkz8b-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "selected": false,
+          "target": "y1zid7a",
+          "source": "b3lkz8b",
+          "targetHandle": "y1zid7a-input-1",
+          "sourceHandle": "b3lkz8b-output-1",
+          "id": "xy-edge__b3lkz8bb3lkz8b-output-1-y1zid7ay1zid7a-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "selected": false,
+          "target": "ig0v0rf",
+          "source": "y1zid7a",
+          "targetHandle": "ig0v0rf-input-1",
+          "sourceHandle": "y1zid7a-output-1",
+          "id": "xy-edge__y1zid7ay1zid7a-output-1-ig0v0rfig0v0rf-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "7exdfsy",
+          "sourceHandle": "7exdfsy-output-fallback",
+          "target": "u2cjz91",
+          "targetHandle": "u2cjz91-input-1",
+          "id": "xy-edge__7exdfsy7exdfsy-output-fallback-u2cjz91u2cjz91-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "selected": false,
+          "target": "2q4ynmy",
+          "source": "m8qowhk",
+          "targetHandle": "2q4ynmy-input-1",
+          "sourceHandle": "m8qowhk-output-1",
+          "id": "xy-edge__m8qowhkm8qowhk-output-1-2q4ynmy2q4ynmy-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "2q4ynmy",
+          "sourceHandle": "2q4ynmy-output-1",
+          "target": "6ee7kp9",
+          "targetHandle": "6ee7kp9-input-1",
+          "id": "xy-edge__2q4ynmy2q4ynmy-output-1-6ee7kp96ee7kp9-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "9lyywux",
+          "sourceHandle": "9lyywux-output-ur9NbIpyKfOiRVLYlua9a",
+          "target": "2q4ynmy",
+          "targetHandle": "2q4ynmy-input-1",
+          "id": "xy-edge__9lyywux9lyywux-output-ur9NbIpyKfOiRVLYlua9a-2q4ynmy2q4ynmy-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "uw3nns6",
+          "sourceHandle": "uw3nns6-output-fallback",
+          "target": "deiysse",
+          "targetHandle": "deiysse-input-1",
+          "id": "xy-edge__uw3nns6uw3nns6-output-fallback-deiyssedeiysse-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "deiysse",
+          "sourceHandle": "deiysse-output-1",
+          "target": "4boxijj",
+          "targetHandle": "4boxijj-input-1",
+          "id": "xy-edge__deiyssedeiysse-output-1-4boxijj4boxijj-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "j7u1by6",
+          "sourceHandle": "j7u1by6-output-fallback",
+          "target": "e0w4uui",
+          "targetHandle": "e0w4uui-input-1",
+          "id": "xy-edge__j7u1by6j7u1by6-output-fallback-e0w4uuie0w4uui-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "j7u1by6",
+          "sourceHandle": "j7u1by6-output-1",
+          "target": "okq4cpx",
+          "targetHandle": "okq4cpx-input-1",
+          "selected": false,
+          "id": "xy-edge__j7u1by6j7u1by6-output-1-okq4cpxokq4cpx-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "selected": false,
+          "target": "9lyywux",
+          "source": "7exdfsy",
+          "targetHandle": "9lyywux-input-1",
+          "sourceHandle": "7exdfsy-output-1",
+          "id": "xy-edge__7exdfsy7exdfsy-output-1-9lyywux9lyywux-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "3m1hf0o",
+          "sourceHandle": "3m1hf0o-output-fallback",
+          "target": "vvm3pfm",
+          "targetHandle": "vvm3pfm-input-1",
+          "id": "xy-edge__3m1hf0o3m1hf0o-output-fallback-vvm3pfmvvm3pfm-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "vvm3pfm",
+          "sourceHandle": "vvm3pfm-output-1",
+          "target": "x7zne38",
+          "targetHandle": "x7zne38-input-1",
+          "id": "xy-edge__vvm3pfmvvm3pfm-output-1-x7zne38x7zne38-input-1",
+          "selected": false
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "rfzmfcu",
+          "sourceHandle": "rfzmfcu-output-1",
+          "target": "gwaz1to",
+          "targetHandle": "gwaz1to-input-1",
+          "selected": false,
+          "id": "xy-edge__rfzmfcurfzmfcu-output-1-gwaz1togwaz1to-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "gwaz1to",
+          "sourceHandle": "gwaz1to-output-1",
+          "target": "giuutsi",
+          "targetHandle": "giuutsi-input-1",
+          "id": "xy-edge__gwaz1togwaz1to-output-1-giuutsigiuutsi-input-1"
+        },
+        {
+          "type": "custom",
+          "markerEnd": {
+            "type": "arrowclosed",
+            "color": "gray",
+            "width": 10,
+            "height": 10,
+            "strokeWidth": 1
+          },
+          "source": "okq4cpx",
+          "sourceHandle": "okq4cpx-output-ur9NbIpyKfOiRVLYlua9a",
+          "target": "gwaz1to",
+          "targetHandle": "gwaz1to-input-1",
+          "id": "xy-edge__okq4cpxokq4cpx-output-ur9NbIpyKfOiRVLYlua9a-gwaz1togwaz1to-input-1"
+        }
+      ],
+      "viewport": {
+        "x": 389.89814836717164,
+        "y": 114.28882622378131,
+        "zoom": 0.24699092976546966
+      },
+      "omniCustom": {
+        "inputSetting": {
+          "form": {
+            "labelCol": 6,
+            "wrapperCol": 12,
+            "layout": "vertical"
+          },
+          "schema": {
+            "type": "object",
+            "properties": {
+              "pdmoubpwmrq": {
+                "type": "string",
+                "x-component": "Text",
+                "x-component-props": {
+                  "content": "Đăng nhập Facebook",
+                  "mode": "h1"
+                },
+                "x-decorator-props": {
+                  "colon": false
+                },
+                "x-designable-id": "pdmoubpwmrq",
+                "x-index": 0
+              },
+              "jinl3qaf095": {
+                "type": "string",
+                "x-component": "Link",
+                "x-component-props": {
+                  "href": "https://t.me/omnilogin_airdrop",
+                  "content": "Liên hệ hỗ trợ"
+                },
+                "x-decorator-props": {},
+                "x-decorator": "FormItem",
+                "x-designable-id": "jinl3qaf095",
+                "x-index": 1
+              },
+              "sep": {
+                "type": "string",
+                "title": "Dấu ngăn cách",
+                "x-decorator": "FormItem",
+                "x-component": "Input",
+                "x-validator": [],
+                "x-component-props": {},
+                "x-decorator-props": {},
+                "name": "sep",
+                "default": "|",
+                "x-designable-id": "aoequxejdt3",
+                "x-index": 2
+              },
+              "accountListStr": {
+                "type": "string",
+                "title": "Danh sách tài khoản",
+                "x-decorator": "FormItem",
+                "x-component": "Input.TextArea",
+                "x-validator": [],
+                "x-component-props": {},
+                "x-decorator-props": {},
+                "description": "list",
+                "x-designable-id": "5n47tl1tg7y",
+                "x-index": 3,
+                "name": "accountListStr"
+              },
+              "3m0fa4xbg0s": {
+                "type": "string",
+                "x-component": "Text",
+                "x-decorator": "FormItem",
+                "x-component-props": {
+                  "content": "username|password|2fa"
+                },
+                "x-decorator-props": {
+                  "layout": "vertical",
+                  "colon": true,
+                  "fullness": false,
+                  "bordered": false
+                },
+                "x-designable-id": "3m0fa4xbg0s",
+                "x-index": 4,
+                "title": "Định dạng hỗ trợ"
+              },
+              "file": {
+                "type": "boolean",
+                "title": "Đăng nhập bằng Tệp dữ liệu tài khoản",
+                "x-decorator": "FormItem",
+                "x-component": "Switch",
+                "x-validator": [],
+                "x-component-props": {},
+                "x-decorator-props": {
+                  "colon": false
+                },
+                "name": "file",
+                "x-designable-id": "4a69lbrivry",
+                "x-index": 5,
+                "description": "Khi chọn lựa chọn này, bạn sẽ đăng nhập theo tệp dữ liệu thay vì danh sách tài khoản ở trên"
+              },
+              "fileAccount": {
+                "type": "string",
+                "title": "Đường dẫn đến tệp dữ liệu",
+                "x-decorator": "FormItem",
+                "x-component": "PathSelector",
+                "x-validator": [],
+                "x-component-props": {},
+                "x-decorator-props": {},
+                "name": "fileAccount",
+                "description": "Tệp nhập vào phải ở định dạng .xlsx. Ví dụ file.xlsx",
+                "x-designable-id": "243ylx4ct17",
+                "x-index": 6
+              },
+              "sqxk0aacg4h": {
+                "type": "string",
+                "x-component": "Image",
+                "x-component-props": {
+                  "src": "https://res.cloudinary.com/dx59ersuw/image/upload/v1779510910/Screenshot_2026-05-23_113456_z0k7cz.png"
+                },
+                "x-designable-id": "sqxk0aacg4h",
+                "x-index": 7
+              },
+              "g242gejzrv2": {
+                "type": "string",
+                "x-component": "Text",
+                "x-component-props": {
+                  "content": "Cấu trúc tệp dữ liệu"
+                },
+                "x-designable-id": "g242gejzrv2",
+                "x-index": 8,
+                "x-decorator": "FormItem",
+                "x-decorator-props": {}
+              },
+              "xtj05ppc271": {
+                "type": "string",
+                "x-component": "Link",
+                "x-component-props": {
+                  "content": "Tải tệp mẫu ở đây",
+                  "href": "https://docs.google.com/spreadsheets/d/1SZ2dfpXqdZI9_qGI0ZE2huRfvJks1SwQq0IFLbl9Yy0/edit?usp=sharing"
+                },
+                "x-designable-id": "xtj05ppc271",
+                "x-index": 9
+              }
+            },
+            "x-designable-id": "z0wxnfj3o06"
+          },
+          "calcInitialValues": {
+            "sep": "|"
+          }
+        },
+        "inputVersion": 2,
+        "i18n": {
+          "en": {
+            "Đăng nhập Facebook": "Login to Facebook",
+            "Liên hệ hỗ trợ": "Contact support",
+            "Định dạng hỗ trợ": "Supported Formats",
+            "list": "List of accounts. One account per line. Maximum 100 accounts, account number must equal selected profile number.",
+            "Danh sách tài khoản": "List of accounts",
+            "Dấu ngăn cách": "Separator",
+            "Cấu trúc tệp dữ liệu": "Data file structure",
+            "Tệp nhập vào phải ở định dạng .xlsx. Ví dụ file.xlsx": "The input file must be in .xlsx format (e.g., file.xlsx).",
+            "Đường dẫn đến tệp dữ liệu": "Path to data file",
+            "Khi chọn lựa chọn này, bạn sẽ đăng nhập theo tệp dữ liệu thay vì danh sách tài khoản ở trên": "When this option is selected, you will log in using the data file instead of the account list provided above.",
+            "Đăng nhập bằng Tệp dữ liệu tài khoản": "Log in using an Account data file",
+            "Tải tệp mẫu ở đây": "Download the sample file here."
+          },
+          "vi": {
+            "Đăng nhập Facebook": "Đăng nhập Facebook",
+            "Liên hệ hỗ trợ": "Liên hệ hỗ trợ",
+            "Định dạng hỗ trợ": "Định dạng hỗ trợ",
+            "list": "Danh sách tài khoản. Mỗi tài khoản trên 1 dòng. Tối đa 100 tài khoản, bắt buộc số tài khoản phải bằng số profile đã chọn.",
+            "Danh sách tài khoản": "Danh sách tài khoản",
+            "Dấu ngăn cách": "Dấu ngăn cách",
+            "Cấu trúc tệp dữ liệu": "Cấu trúc tệp dữ liệu",
+            "Tệp nhập vào phải ở định dạng .xlsx. Ví dụ file.xlsx": "Tệp nhập vào phải ở định dạng .xlsx. Ví dụ file.xlsx",
+            "Đường dẫn đến tệp dữ liệu": "Đường dẫn đến tệp dữ liệu",
+            "Khi chọn lựa chọn này, bạn sẽ đăng nhập theo tệp dữ liệu thay vì danh sách tài khoản ở trên": "Khi chọn lựa chọn này, bạn sẽ đăng nhập theo tệp dữ liệu thay vì danh sách tài khoản ở trên",
+            "Đăng nhập bằng Tệp dữ liệu tài khoản": "Đăng nhập bằng Tệp dữ liệu tài khoản",
+            "Tải tệp mẫu ở đây": "Tải tệp mẫu ở đây"
+          },
+          "ru": {},
+          "de": {},
+          "es": {},
+          "fr": {},
+          "ja": {},
+          "pt": {},
+          "zh": {}
+        },
+        "inputValues": {
+          "sep": "|",
+          "accountListStr": "100090491648111|Homnay@0207|MYE6RBDZXSIJMV6HOSS4BWRERXHRBV3P\n100065183533651|ThangMot@2024|ZIRZ3MMQ2K5A5FTSRV5TARXPVDT4426N\n100066952699798|ThangMot@2024|E5HWWNYUFI7E2USTH5ILS2LBT2VL24OH\n100051495887362|HomNay@0207|OC3JPST6VJTKHXTCV47QXY6U4MSCYDFO\n100084991370915|Thuhai@2503|PZEHJNYNSXPYSVDAG75FWQE4GSC4ELMJ\n100090175121923|ThangMot@2024|Z3WW5QZHDA5OMSLOSJHLGRYJG4H3SHZM\n100089995459882|HomNay@0207|CTHEBX5XCREQ3PSVNSTS7H4JURQIG3HJ\n100089843966192|ThangMot@2024|H5TZSUMVSXMDMZSL3YJB22PCYFKPIXFU\n100090066856385|HomNay@0701|AG7PRMEHHOWUSVMI7FAH2E6NU7IPVGIK\n100090293437633|ThangMot@2024|5OOR5ZSW3QFQP6OM245TYWIEYWDJEAVQ\n100090114974760|ThangMot@2024|AQCDCQ6VVZKET7JC2RMBYDIWITYBXKEL\n100089971041081|ThangMot@2024|YH6I7H227HIPZFOHTTD6EJETYTUWHQPL\n100089973560922|Thusau@0502|6FIKBF4UDJV5QELIF7DEGB44VBZJVEXG\n100090236350441|ThangMot@2024|NB64S5WW3SFXEF4Y2YJSUTRU7FQMPV32\n100090251709495|Homnay@1101|IRJKWAQVHXHBRG2V47X63VVAYTK2YE3A\n100090022758797|ThangMot@2024|35OPZQ45U5BHMLUBQKCXVH6FUCPSWE3O\n100090011059209|ThangMot@2024|M7GJQLH7JX7RA6YOGO5WAPPKXSBE32KM\n100089960331353|Thunam@2803|KCCTWPKHLJ2EMNA3QE2E6I7YXYSLK2B6\n100090381379274|ThangMot@2024|WREMKI3MLFOCMLMRMRMCQNROCTXD3KPT\n100090272334346|ThuSau@0501|SWO3AF43KBFKF2BKDYTLZVNZF2ZH2DRZ\n100090383750620|ThangMot@2024|JUA2MR6RGO4MZU5HLW6KDRQOL226UNN5\n100090594401307|Thubay@1304|LSDHQ6ABN65MW5H6WEFLRODIZLXM3IOM\n100090509474834|ThangMot@2024|UPN6U5BP6DT4NDMAR7XPGGPHHRETLG72\n100090365797052|ThangMot@2024|SR2QDUZOUCGOCVHOQPELMZ7KTQ4ZRY3L\n100090231245162|ThangMot@2024|BDRE7NN44RCHJVBQJU5P3ZDJSJSVQUFN\n100090809600453|ThangMot@2024|CZIEDJCISRYFT4KSM7BTHTLQE7YQL5GD\n100090930016660|HomNay@2202|EKPHCLK3MREYF2DA4D5TURJ5ONU2PASK\n100090737801934|ThangMot@2024|AKCEOMTW6JYYF46LJUV67JKMVJKE3UO2\n100090797512735|ThangMot@2024|J5TIG4ZL3DKEF4WOME7KOJ2W4GBWZKLO\n100089659110877|Thusau@0502|4PARTWUMRXMM2KRTZKIQAGUWWIU65BAW"
+        }
+      }
+    },
+    "p": {}
+  },
+  -2,
+  [
+    13,
+    42,
+    57
+  ],
+  50
+]

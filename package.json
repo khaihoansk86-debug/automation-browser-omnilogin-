@@ -9,7 +9,10 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "run:search": "tsx src/run-search.ts",
-    "telegram:bot": "tsx src/telegram-bot.ts"
+    "telegram:bot": "tsx src/telegram-bot.ts",
+    "gsc:auth": "tsx src/gsc-auth.ts",
+    "gsc:sync": "tsx src/sync-gsc-keywords.ts",
+    "auto:review": "tsx src/auto-review.ts"
   },
   "keywords": [],
   "author": "",

@@ -3,6 +3,7 @@ const DEFAULTS = {
   newsReadMinSeconds: 90,
   newsReadMaxSeconds: 180,
   keywordFilePath: 'C:\\Users\\Admin\\Desktop\\key_derma\\keyderma.txt',
+  gscKeywordPoolPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\gsc-keywords.json',
   keyword: 'Omnilogin',
   targetDomain: 'khaihoanderma.com',
   targetBaseUrl: 'https://khaihoanderma.com/',
@@ -13,6 +14,17 @@ const DEFAULTS = {
 
 function param(name) {
   return typeof __params !== 'undefined' && __params ? __params[name] : undefined;
+}
+
+function reportStep(step, detail) {
+  const reporter = param('reporter');
+  if (reporter) {
+    try {
+      reporter(step, detail);
+    } catch (e) {
+      console.log('[reporter-error]', e.message || String(e));
+    }
+  }
 }
 
 function normalizeHost(value) {
@@ -147,16 +159,106 @@ async function getRandomLineFromFile(filePath, fallback, label) {
   return fallback;
 }
 
+async function getKeywordFromGscPool(config) {
+  const poolPath = String(config.gscKeywordPoolPath || '').trim();
+  if (!poolPath) return null;
+
+  try {
+    const raw = await omni.file.read(poolPath);
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const keywords = Array.isArray(parsed.keywords) ? parsed.keywords : [];
+    const candidates = keywords
+      .map((item) => ({
+        keyword: String(item.keyword || '').trim(),
+        score: Math.max(1, Number(item.score || 1)),
+        impressions: Number(item.impressions || 0),
+        clicks: Number(item.clicks || 0),
+        ctr: Number(item.ctr || 0),
+        position: Number(item.position || 0),
+      }))
+      .filter((item) => item.keyword);
+
+    if (candidates.length === 0) return null;
+
+    const randomIndex = Math.floor(Math.random() * candidates.length);
+    const selectedItem = candidates[randomIndex];
+    console.log(
+      '[gsc] selected keyword (uniform random): ' +
+        JSON.stringify({
+          keyword: selectedItem.keyword,
+          impressions: selectedItem.impressions,
+          clicks: selectedItem.clicks,
+          ctr: selectedItem.ctr,
+          position: selectedItem.position,
+          score: selectedItem.score,
+          poolPath,
+        }),
+    );
+    return selectedItem.keyword;
+  } catch (error) {
+    console.log('[gsc] cannot read keyword pool, fallback file keyword:', error.message || String(error));
+    return null;
+  }
+}
+
 async function getKeyword(config) {
   const manualKeyword = String(param('keyword') || '').trim();
   if (manualKeyword) return manualKeyword;
+  const gscKeyword = await getKeywordFromGscPool(config);
+  if (gscKeyword) return gscKeyword;
   return getRandomLineFromFile(config.keywordFilePath, config.keyword, 'derma keyword');
 }
+
+const NEWS_KEYWORDS = [
+  'tin tức mới nhất hôm nay',
+  'thời sự vtv1 hôm nay',
+  'tin nóng 24h qua',
+  'vnexpress tin tức mới nhất',
+  'báo dân trí ngày hôm nay',
+  'tuổi trẻ online mới nhất',
+  'báo thanh niên mới nhất',
+  'tin thế giới nổi bật',
+  'dự báo thời tiết hôm nay',
+  'kết quả ngoại hạng anh mới nhất',
+  'lịch thi đấu cúp c1 hôm nay',
+  'tin thể thao bóng đá việt nam',
+  'kết quả bóng đá đêm qua',
+  'bảng xếp hạng ngoại hạng anh',
+  'giá vàng hôm nay tăng hay giảm',
+  'giá vàng sjc hôm nay',
+  'thị trường chứng khoán hôm nay',
+  'giá xăng dầu trong nước hôm nay',
+  'lãi suất ngân hàng nào cao nhất',
+  'tin công nghệ mới nhất',
+  'đánh giá iphone mới nhất',
+  'trí tuệ nhân tạo ai mới nhất',
+  'xe ô tô điện hot nhất hiện nay',
+  'thủ thuật máy tính hay',
+  'phim chiếu rạp hot nhất tuần này',
+  'tin tức showbiz việt mới nhất',
+  'nhạc trẻ hot nhất hiện nay',
+  'gameshow hot nhất hiện nay',
+  'bí quyết sống khỏe mỗi ngày',
+  'thực phẩm tăng sức đề kháng',
+  'món ngon mỗi ngày dễ làm',
+  'các bước dưỡng da ban đêm cơ bản',
+  'bài tập yoga giảm mỡ bụng tại nhà',
+  'địa điểm du lịch hè rẻ đẹp',
+  'kinh nghiệm du lịch sapa tự túc',
+  'món ăn đặc sản đà nẵng',
+  'những quốc gia đáng đi du lịch nhất',
+  'tin nhanh 24h',
+  'vietnamnet tin tuc',
+  'kênh 14 tin tức giải trí'
+];
 
 async function getNewsKeyword(config) {
   const manualKeyword = String(param('newsKeyword') || '').trim();
   if (manualKeyword) return manualKeyword;
-  return getRandomLineFromFile(config.newsKeywordFilePath, 'VnExpress', 'news keyword');
+  const randomIndex = Math.floor(Math.random() * NEWS_KEYWORDS.length);
+  const keyword = NEWS_KEYWORDS[randomIndex];
+  console.log('[news] self-generated keyword: ' + keyword);
+  return keyword;
 }
 
 async function maybeAcceptGoogleConsent() {
@@ -378,33 +480,136 @@ function mergeResults(existing, nextResults) {
   }));
 }
 
-async function findTargetResultWithScrolling(targetDomain) {
-  let collected = [];
-  for (let attempt = 0; attempt < 7; attempt++) {
-    const currentResults = await extractGoogleResults();
-    collected = mergeResults(collected, currentResults);
-    const targetResult = collected.find((result) => isTargetHost(result.host, targetDomain));
-    if (targetResult) {
-      console.log(
-        '[derma] target found during scan: ' +
-          JSON.stringify({
-            attempt,
-            rank: targetResult.position,
-            url: cleanUrl(targetResult.url),
-          }),
-      );
-      return {
-        targetResult,
-        topResults: collected,
-      };
-    }
+async function goToNextGooglePage() {
+  console.log('[derma] looking for next page button...');
+  // Selector list including desktop/mobile, English/Vietnamese, standard/dynamic Next buttons
+  const nextSelectors = [
+    'a#pnnext',
+    'a[aria-label="Next page"]',
+    'a[aria-label="Trang sau"]',
+    'a:has-text("Next")',
+    'a:has-text("Tiếp")',
+    'a:has-text("Tiếp theo")',
+    'a:has-text("More results")',
+    'a:has-text("Xem thêm")',
+    'button:has-text("Xem thêm")',
+    'button:has-text("More results")'
+  ];
 
-    if (attempt < 6) {
-      if (Math.random() < 0.7) await moveMouseNaturally();
-      await page.mouse.wheel(0, 650 + Math.floor(Math.random() * 450));
-      await wait(850 + Math.floor(Math.random() * 900));
+  // Try clicking via DOM evaluation first (highly reliable for Google Search pagination inside Omnilogin)
+  try {
+    const clicked = await page.evaluate((selectors) => {
+      for (const sel of selectors) {
+        let element;
+        if (sel.startsWith('a:has-text(') || sel.startsWith('button:has-text(')) {
+          const textToFind = sel.match(/"([^"]+)"/)?.[1] || sel.match(/'([^']+)'/)?.[1];
+          if (textToFind) {
+            const tag = sel.startsWith('a:') ? 'a' : 'button';
+            const elements = Array.from(document.querySelectorAll(tag));
+            element = elements.find(el => (el.textContent || '').trim().toLowerCase().includes(textToFind.toLowerCase()));
+          }
+        } else {
+          element = document.querySelector(sel);
+        }
+
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            element.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+            element.click();
+            return { success: true, selector: sel };
+          }
+        }
+      }
+      return { success: false };
+    }, nextSelectors);
+
+    if (clicked && clicked.success) {
+      console.log(`[derma] clicked next page button via page.evaluate using selector: ${clicked.selector}`);
+      await page.waitForLoadState('domcontentloaded');
+      await wait(2000 + Math.floor(Math.random() * 1500));
+      return true;
+    }
+  } catch (err) {
+    console.log('[derma] error clicking next page via page.evaluate:', err.message || String(err));
+  }
+
+  // Fallback to Playwright locator if evaluation did not work
+  for (const selector of nextSelectors) {
+    try {
+      const locator = page.locator(selector).first();
+      if (await locator.count() > 0 && await locator.isVisible()) {
+        console.log(`[derma] found next page button using Playwright locator: ${selector}`);
+        await locator.scrollIntoViewIfNeeded().catch(() => {});
+        await wait(500 + Math.floor(Math.random() * 500));
+        await locator.click({ force: true });
+        await page.waitForLoadState('domcontentloaded');
+        await wait(2000 + Math.floor(Math.random() * 1500));
+        return true;
+      }
+    } catch (e) {
+      console.log(`[derma] error checking next page selector via Playwright ${selector}:`, e.message || String(e));
     }
   }
+
+  console.log('[derma] next page button not found');
+  return false;
+}
+
+async function findTargetResultWithScrolling(targetDomain, keyword) {
+  let collected = [];
+  const maxPages = Math.floor(Math.random() * 6) + 10; // Ngẫu nhiên từ 10 đến 15 trang để tìm kiếm sâu hơn
+  console.log(`[derma] max pages to scan for this run: ${maxPages}`);
+
+  for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+    console.log(`[derma] scanning google results page ${pageNum} of ${maxPages}...`);
+    reportStep('derma_page', { pageNum, maxPages });
+    await maybeAcceptGoogleConsent();
+    await throwIfGoogleCaptcha(`[derma] page scan ${pageNum}`);
+
+    const scrollAttempts = 6;
+    for (let attempt = 0; attempt < scrollAttempts; attempt++) {
+      const currentResults = await extractGoogleResults();
+      collected = mergeResults(collected, currentResults);
+      const targetResult = collected.find((result) => isTargetHost(result.host, targetDomain));
+      
+      if (targetResult) {
+        console.log(
+          `[derma] target found on page ${pageNum} during scan: ` +
+            JSON.stringify({
+              pageNum,
+              attempt,
+              rank: targetResult.position,
+              url: cleanUrl(targetResult.url),
+            }),
+        );
+        reportStep('derma_found', { keyword, pageNum, position: targetResult.position });
+        return {
+          targetResult,
+          topResults: collected,
+        };
+      }
+
+      if (attempt < scrollAttempts - 1) {
+        if (Math.random() < 0.7) await moveMouseNaturally();
+        await page.mouse.wheel(0, 600 + Math.floor(Math.random() * 400));
+        await wait(800 + Math.floor(Math.random() * 800));
+      }
+    }
+
+    if (pageNum === maxPages) {
+      console.log(`[derma] reached max page limit (${maxPages}) without finding target`);
+      break;
+    }
+
+    const hasNext = await goToNextGooglePage();
+    if (!hasNext) {
+      console.log('[derma] no more pages available, stopping search');
+      break;
+    }
+  }
+
+  reportStep('derma_not_found', { keyword });
 
   return {
     targetResult: null,
@@ -637,40 +842,44 @@ async function clickOrGotoInternalLink(link, deadline) {
   const anchors = await page.locator('a[href]').all();
 
   for (const anchor of anchors.slice(0, 180)) {
-    const href = await anchor.getAttribute('href');
-    if (!href) continue;
-
-    let anchorUrl = '';
     try {
-      anchorUrl = cleanUrl(resolveHref(href, currentUrl));
-    } catch {
-      continue;
-    }
+      const href = await anchor.getAttribute('href');
+      if (!href) continue;
 
-    if (anchorUrl !== targetUrl || !(await anchor.isVisible())) continue;
+      let anchorUrl = '';
+      try {
+        anchorUrl = cleanUrl(resolveHref(href, currentUrl));
+      } catch {
+        continue;
+      }
 
-    try {
-      console.log('[audit] click internal link: ' + targetUrl);
-      await anchor.scrollIntoViewIfNeeded();
-      await wait(300 + Math.floor(Math.random() * 500));
-      await anchor.click();
-      await waitUntilState(
-        'internal link opened',
-        async () => {
-          const url = await page.url();
-          return {
-            ok: sameCleanUrl(url, targetUrl),
-            url,
-            title: await page.title(),
-          };
-        },
-        Math.min(12000, remainingMs(deadline)),
-      );
-      await ensurePageUsable('[audit] after internal click', deadline);
-      return { openedBy: 'click' };
-    } catch (error) {
-      console.log('[audit] click internal failed, fallback goto:', error.message || String(error));
-      break;
+      if (anchorUrl !== targetUrl || !(await anchor.isVisible())) continue;
+
+      try {
+        console.log('[audit] click internal link: ' + targetUrl);
+        await anchor.scrollIntoViewIfNeeded();
+        await wait(300 + Math.floor(Math.random() * 500));
+        await anchor.click();
+        await waitUntilState(
+          'internal link opened',
+          async () => {
+            const url = await page.url();
+            return {
+              ok: sameCleanUrl(url, targetUrl),
+              url,
+              title: await page.title(),
+            };
+          },
+          Math.min(12000, remainingMs(deadline)),
+        );
+        await ensurePageUsable('[audit] after internal click', deadline);
+        return { openedBy: 'click' };
+      } catch (error) {
+        console.log('[audit] click internal failed, fallback goto:', error.message || String(error));
+        break;
+      }
+    } catch (staleErr) {
+      console.log('[audit] stale link elements skipped: ' + (staleErr.message || String(staleErr)));
     }
   }
 
@@ -696,7 +905,7 @@ async function scrollPageForQa(deadline) {
   }
 }
 
-async function readPageWithinBudget(minSeconds, maxSeconds, deadline) {
+async function readPageWithinBudget(minSeconds, maxSeconds, deadline, stepType = 'news') {
   const budget = remainingMs(deadline);
   if (budget <= 0) {
     return {
@@ -716,6 +925,15 @@ async function readPageWithinBudget(minSeconds, maxSeconds, deadline) {
   const localDeadline = startedAt + targetDurationMs;
 
   while (remainingMs(localDeadline) > 0 && remainingMs(deadline) > 0) {
+    const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+    const totalSeconds = Math.floor(targetDurationMs / 1000);
+    if (stepType === 'audit') {
+      const currentUrl = await page.url().catch(() => '');
+      reportStep('audit_reading', { elapsed: elapsedSeconds, total: totalSeconds, url: currentUrl });
+    } else {
+      reportStep('news_reading', { elapsed: elapsedSeconds, total: totalSeconds });
+    }
+
     const direction = Math.random() < 0.86 ? 1 : -1;
     const deltaY = direction * (320 + Math.floor(Math.random() * 760));
     if (Math.random() < 0.55) await moveMouseNaturally();
@@ -1174,6 +1392,7 @@ async function forceOpenFallbackNews(keyword, existingAttempts) {
 async function warmupNewsRead(config) {
   console.log('[news] start ' + new Date().toISOString());
   const keyword = await getNewsKeyword(config);
+  reportStep('news_start', keyword);
   const startedAt = Date.now();
   try {
     await searchGoogle(keyword, {
@@ -1209,7 +1428,10 @@ async function warmupNewsRead(config) {
       config.newsReadMinSeconds,
       config.newsReadMaxSeconds,
       maxNewsDeadline,
+      'news',
     );
+
+    reportStep('news_done');
 
     return {
       keyword,
@@ -1237,6 +1459,7 @@ async function warmupNewsRead(config) {
 
 async function auditTargetSite(config, startUrl) {
   console.log('[step4] audit target site ' + new Date().toISOString());
+  reportStep('audit_start');
   const startedAt = Date.now();
   const minDurationMs = Math.max(120, Number(config.siteQaMinSeconds || 240)) * 1000;
   const maxDurationLimitMs = Math.max(minDurationMs, Math.min(600, Number(config.siteQaMaxSeconds || 420)) * 1000);
@@ -1275,7 +1498,7 @@ async function auditTargetSite(config, startUrl) {
   await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
   await maybeInspectProductImages('[audit] first product image', deadline);
   await scrollToRelatedProducts();
-  const firstReadStats = await readPageWithinBudget(35, 70, deadline);
+  const firstReadStats = await readPageWithinBudget(35, 70, deadline, 'audit');
   visitedPages.push({
     ...(await auditCurrentPage(config.targetDomain)),
     readStats: firstReadStats,
@@ -1294,12 +1517,14 @@ async function auditTargetSite(config, startUrl) {
     await clickOrGotoInternalLink(cleanLink, deadline);
     await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
     await maybeInspectProductImages('[audit] related product image', deadline);
-    const readStats = await readPageWithinBudget(35, 75, deadline);
+    const readStats = await readPageWithinBudget(35, 75, deadline, 'audit');
     visitedPages.push({
       ...(await auditCurrentPage(config.targetDomain)),
       readStats,
     });
   }
+
+  reportStep('audit_done');
 
   return {
     startUrl: cleanUrl(startUrl),
@@ -1316,6 +1541,7 @@ async function main() {
     newsReadMinSeconds: Number(param('newsReadMinSeconds') || DEFAULTS.newsReadMinSeconds),
     newsReadMaxSeconds: Number(param('newsReadMaxSeconds') || DEFAULTS.newsReadMaxSeconds),
     keywordFilePath: String(param('keywordFilePath') || DEFAULTS.keywordFilePath),
+    gscKeywordPoolPath: String(param('gscKeywordPoolPath') || DEFAULTS.gscKeywordPoolPath),
     keyword: String(param('defaultKeyword') || DEFAULTS.keyword),
     targetDomain: String(param('targetDomain') || DEFAULTS.targetDomain),
     targetBaseUrl: String(param('targetBaseUrl') || DEFAULTS.targetBaseUrl),
@@ -1327,13 +1553,14 @@ async function main() {
   const newsWarmup = await warmupNewsRead(config);
   await waitRandomSeconds('[phase] before derma', 12, 25);
   const keyword = await getKeyword(config);
+  reportStep('derma_start', keyword);
   await searchGoogle(keyword, {
     label: '[derma] after search',
     afterResultsMinSeconds: 1,
     afterResultsMaxSeconds: 2,
     skipScan: true,
   });
-  const targetScan = await findTargetResultWithScrolling(config.targetDomain);
+  const targetScan = await findTargetResultWithScrolling(config.targetDomain, keyword);
   const topResults = targetScan.topResults;
   const targetResult = targetScan.targetResult;
   const targetStartUrl = targetResult ? cleanUrl(targetResult.url) : cleanUrl(config.targetBaseUrl);
