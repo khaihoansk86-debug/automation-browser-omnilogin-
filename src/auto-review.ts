@@ -206,41 +206,54 @@ async function main() {
     await page.waitForTimeout(5000);
     
     productUrls = (await page.evaluate(() => {
-      // Find the section title container that has "Flash sale" (case insensitive)
-      const titleContainers = Array.from(document.querySelectorAll('.section-title-container'));
-      const flashSaleContainer = titleContainers.find(el => 
-        el.textContent.trim().toLowerCase().includes('flash sale')
+      // Find the section/heading that contains "sản phẩm mới về" (case insensitive)
+      const allElements = Array.from(document.querySelectorAll(
+        '.section-title-container, h2, h3, h4, .block-title, [class*="title"]'
+      ));
+      const newProductsSection = allElements.find(el =>
+        el.textContent.trim().toLowerCase().includes('sản phẩm mới về')
       );
-      if (!flashSaleContainer) {
-        console.error('Flash sale section not found on page.');
+      if (!newProductsSection) {
+        console.error('"Sản phẩm mới về" section not found on page.');
         return [];
       }
-      
-      // Trailing down to find the closest .row container containing products
-      let current: Element | null = flashSaleContainer;
+
+      // Walk down siblings to find the nearest .row or grid container with products
+      let current: Element | null = newProductsSection;
       let productRow: Element | null = null;
-      while (current) {
-        current = current.nextElementSibling;
-        if (current && current.classList.contains('row') && current.querySelector('.product-small')) {
-          productRow = current;
-          break;
+      // Try parent's siblings first (in case heading is nested inside a wrapper)
+      const parents = [newProductsSection, newProductsSection.parentElement, newProductsSection.parentElement?.parentElement].filter(Boolean) as Element[];
+      outer: for (const parent of parents) {
+        let sibling: Element | null = parent;
+        while (sibling) {
+          sibling = sibling.nextElementSibling;
+          if (sibling && sibling.querySelector('.product-small, .product, article.product')) {
+            productRow = sibling;
+            break outer;
+          }
         }
       }
-      
+
       if (!productRow) {
-        console.error('Flash sale product row not found.');
+        // Fallback: look inside the section's own parent for any product links
+        const sectionParent = newProductsSection.closest('section, .section, .block, div') || newProductsSection.parentElement;
+        if (sectionParent) productRow = sectionParent;
+      }
+
+      if (!productRow) {
+        console.error('"Sản phẩm mới về" product row not found.');
         return [];
       }
-      
-      // Extract all product links inside the row
+
+      // Extract all product links inside the container
       const anchors = Array.from(productRow.querySelectorAll('a'));
       return anchors
-        .map(a => a.href)
-        .filter(href => href.includes('/product/') || href.includes('/san-pham/'))
-        .filter((href, idx, self) => self.indexOf(href) === idx);
+        .map((a: HTMLAnchorElement) => a.href)
+        .filter((href: string) => href.includes('/product/') || href.includes('/san-pham/'))
+        .filter((href: string, idx: number, self: string[]) => self.indexOf(href) === idx);
     })) as string[];
 
-    console.log(`Found ${productUrls.length} product URLs on homepage.`);
+    console.log(`Found ${productUrls.length} product URLs in "Sản phẩm mới về" section.`);
 
     // Check reviews on target website for each product using the already opened browser
     for (const productUrl of productUrls) {
@@ -295,7 +308,7 @@ async function main() {
 
   console.log(`Found ${productsToReview.length} products verified to need reviews.`);
   if (productsToReview.length === 0) {
-    console.log('All homepage flash sale products are already reviewed.');
+    console.log('Tất cả sản phẩm mới về đã được đánh giá.');
     return;
   }
 
