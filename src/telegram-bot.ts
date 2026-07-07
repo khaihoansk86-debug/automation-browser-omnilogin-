@@ -21,6 +21,21 @@ type TelegramUpdate = {
       id: number;
     };
   };
+  callback_query?: {
+    id: string;
+    from: {
+      id: number;
+      username?: string;
+    };
+    message?: {
+      message_id: number;
+      chat: {
+        id: number;
+      };
+      text?: string;
+    };
+    data?: string;
+  };
 };
 
 type AppAlias = {
@@ -516,7 +531,7 @@ class TelegramClient {
     return this.request<TelegramUpdate[]>('getUpdates', {
       offset,
       timeout: 30,
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
     });
   }
 
@@ -539,6 +554,14 @@ class TelegramClient {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
       reply_markup: replyMarkup,
+    });
+  }
+
+  async answerCallbackQuery(callbackQueryId: string, text?: string, showAlert = false) {
+    return this.request<boolean>('answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text,
+      show_alert: showAlert,
     });
   }
 
@@ -585,6 +608,27 @@ class TelegramClient {
       console.log(`[telegram-client] deleteMessage failed:`, err.message || String(err));
     });
   }
+}
+
+function welcomeText(omniHost: string) {
+  return [
+    '<b>╭━━━━━━━━━━━━━━━━━━━━━━━━━━╮</b>',
+    '<b>   👏 Chào mừng bạn quay lại với Bot Omnilogin!   </b>',
+    '<b>╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯</b>',
+    '',
+    '⚡ <b>Bot hỗ trợ:</b>',
+    '- Lập chỉ mục GSC (Tự động index URL)',
+    '- Nuôi / Warmup Profiles sạch (Tăng trust Chrome)',
+    '- Tương tác SEO Google & Rank QA',
+    '- Đánh giá sản phẩm WooCommerce (AI viết bài)',
+    '',
+    '🔗 <b>Về hệ thống:</b>',
+    '- Target Site: <code>khaihoanderma.com</code>',
+    `- Host: <code>${omniHost}</code>`,
+    '- Hàng đợi GSC: Gửi file <code>.txt</code> trực tiếp vào bot',
+    '',
+    '<i>Nhấp vào các nút dưới đây để chạy kịch bản nhanh hoặc gửi file .txt để cập nhật hàng đợi Index GSC.</i>'
+  ].join('\n');
 }
 
 function helpText(defaultAppId: string) {
@@ -1292,19 +1336,35 @@ async function main() {
     one_time_keyboard: false
   };
 
+  const defaultInlineKeyboard = {
+    inline_keyboard: [
+      [
+        { text: '🚀 Chạy Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
+      ],
+      [
+        { text: '🌱 Chạy Nuôi Profile (37-66)', callback_data: '/run app=warmup profiles=37-66' },
+        { text: '📈 Chạy Rank QA (37-66)', callback_data: '/run app=derma profiles=37-66' }
+      ],
+      [
+        { text: '✍️ Đánh giá sản phẩm', callback_data: '/review' },
+        { text: '📊 Xem trạng thái', callback_data: '/status' }
+      ],
+      [
+        { text: '🛑 Dừng kịch bản', callback_data: '/stop' }
+      ],
+      [
+        { text: '📋 Danh sách Apps', callback_data: '/list' },
+        { text: '❓ Trợ giúp', callback_data: '/help' }
+      ]
+    ]
+  };
+
   console.log(`Telegram bot started. DEFAULT_APP_ID=${defaultAppId}, OMNILOGIN_HOST=${omniHost}`);
   await telegram
     .sendMessage(
       allowedChatId,
-      [
-        '<b>Bot đã sẵn sàng</b>',
-        `Workflow mặc định: ${code(defaultAppId)}`,
-        `Omnilogin: ${code(omniHost)}`,
-        `MKTProxy: ${code(mktProxyConfig.enabled ? 'bật' : 'tắt')}`,
-        '',
-        `Sử dụng các nút bấm nhanh bên dưới hoặc gõ ${code('/help')} để xem lệnh hỗ trợ.`,
-      ].join('\n'),
-      defaultMenuKeyboard
+      welcomeText(omniHost),
+      defaultInlineKeyboard
     )
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1318,10 +1378,25 @@ async function main() {
       for (const update of updates) {
         offset = update.update_id + 1;
         const message = update.message;
-        let text = (message?.text || message?.caption || '').trim();
-        const chatId = message?.chat.id;
-        if (!message || !chatId) continue;
-        if (!text && !message.document) continue;
+        const callbackQuery = update.callback_query;
+
+        let text = '';
+        let chatId: number | undefined;
+        let document = undefined;
+
+        if (message) {
+          text = (message.text || message.caption || '').trim();
+          chatId = message.chat.id;
+          document = message.document;
+        } else if (callbackQuery) {
+          text = (callbackQuery.data || '').trim();
+          chatId = callbackQuery.message?.chat.id;
+          // Answer callback query so the loading spinner on the button stops
+          await telegram.answerCallbackQuery(callbackQuery.id).catch(() => {});
+        }
+
+        if (!chatId) continue;
+        if (!text && !document) continue;
 
         if (chatId !== allowedChatId) {
           await telegram.sendMessage(
@@ -1354,7 +1429,7 @@ async function main() {
         }
 
         // Handle GSC URL file upload
-        if (message.document) {
+        if (message && message.document) {
           const doc = message.document;
           const fileName = doc.file_name || 'urls.txt';
           if (fileName.toLowerCase().endsWith('.txt')) {
@@ -1400,8 +1475,13 @@ async function main() {
           }
         }
 
-        if (text.startsWith('/help') || text.startsWith('/start')) {
-          await telegram.sendMessage(chatId, helpText(defaultAppId), defaultMenuKeyboard);
+        if (text.startsWith('/start')) {
+          await telegram.sendMessage(chatId, welcomeText(omniHost), defaultInlineKeyboard);
+          continue;
+        }
+
+        if (text.startsWith('/help')) {
+          await telegram.sendMessage(chatId, helpText(defaultAppId), defaultInlineKeyboard);
           continue;
         }
 
