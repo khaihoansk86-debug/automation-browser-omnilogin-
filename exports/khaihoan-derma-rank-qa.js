@@ -690,7 +690,7 @@ async function maybeInspectProductImages(label, deadline) {
         const rect = img.getBoundingClientRect();
         const src = img.currentSrc || img.src || '';
         const alt = img.alt || '';
-        if (!src || rect.width < 90 || rect.height < 90) continue;
+        if (!src || src.startsWith('data:') || rect.width < 90 || rect.height < 90) continue;
         if (rect.bottom < 0 || rect.top > window.innerHeight * 1.6) continue;
         out.push({
           src,
