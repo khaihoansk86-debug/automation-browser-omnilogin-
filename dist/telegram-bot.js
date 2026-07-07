@@ -713,6 +713,50 @@ function readJsonFileSafe(path) {
     }
     return null;
 }
+const defaultMenuKeyboard = {
+    keyboard: [
+        [
+            { text: '🚀 Chạy Index GSC (Profile 37)' },
+            { text: '🌱 Chạy Nuôi Profile (Profiles 37-66)' }
+        ],
+        [
+            { text: '📈 Chạy Rank QA (Profiles 37-66)' },
+            { text: '✍️ Đánh giá sản phẩm' }
+        ],
+        [
+            { text: '📊 Xem trạng thái' },
+            { text: '🛑 Dừng kịch bản' }
+        ],
+        [
+            { text: '📋 Danh sách Apps' },
+            { text: '❓ Trợ giúp' }
+        ]
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: false
+};
+const defaultInlineKeyboard = {
+    inline_keyboard: [
+        [
+            { text: '🚀 Chạy Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
+        ],
+        [
+            { text: '🌱 Chạy Nuôi Profile (37-66)', callback_data: '/run app=warmup profiles=37-66' },
+            { text: '📈 Chạy Rank QA (37-66)', callback_data: '/run app=derma profiles=37-66' }
+        ],
+        [
+            { text: '✍️ Đánh giá sản phẩm', callback_data: '/review' },
+            { text: '📊 Xem trạng thái', callback_data: '/status' }
+        ],
+        [
+            { text: '🛑 Dừng kịch bản', callback_data: '/stop' }
+        ],
+        [
+            { text: '📋 Danh sách Apps', callback_data: '/list' },
+            { text: '❓ Trợ giúp', callback_data: '/help' }
+        ]
+    ]
+};
 async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profileName) {
     const scriptPath = getLocalAiAppScriptPath(app.appId);
     if (!existsSync(scriptPath))
@@ -1015,11 +1059,10 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                     ].join('\n');
                 }
                 if (statusMessageId !== null) {
-                    await telegram.editMessageText(chatId, statusMessageId, reportText).catch(() => { });
+                    await telegram.deleteMessage(chatId, statusMessageId).catch(() => { });
+                    statusMessageId = null;
                 }
-                else {
-                    await telegram.sendMessage(chatId, reportText);
-                }
+                await telegram.sendMessage(chatId, reportText, defaultInlineKeyboard);
                 if (shouldSendFile) {
                     const txtFilePath = 'C:\\Users\\Admin\\Downloads\\khaihoanderma.txt';
                     if (existsSync(txtFilePath)) {
@@ -1047,8 +1090,10 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
             }
         }
         if (statusMessageId !== null) {
-            await telegram.editMessageText(chatId, statusMessageId, reportText).catch(() => { });
+            await telegram.deleteMessage(chatId, statusMessageId).catch(() => { });
+            statusMessageId = null;
         }
+        await telegram.sendMessage(chatId, reportText, defaultInlineKeyboard);
         return { ok: true };
     }
     catch (error) {
@@ -1062,8 +1107,10 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
             `--------------------------------------------`
         ].join('\n');
         if (statusMessageId !== null) {
-            await telegram.editMessageText(chatId, statusMessageId, failText).catch(() => { });
+            await telegram.deleteMessage(chatId, statusMessageId).catch(() => { });
+            statusMessageId = null;
         }
+        await telegram.sendMessage(chatId, failText, defaultInlineKeyboard);
         return { ok: false, error: message };
     }
 }
@@ -1088,50 +1135,6 @@ async function main() {
     const omni = new OmniLogin({ host: omniHost, timeout: 60_000 });
     const state = { active: false };
     let offset = 0;
-    const defaultMenuKeyboard = {
-        keyboard: [
-            [
-                { text: '🚀 Chạy Index GSC (Profile 37)' },
-                { text: '🌱 Chạy Nuôi Profile (Profiles 37-66)' }
-            ],
-            [
-                { text: '📈 Chạy Rank QA (Profiles 37-66)' },
-                { text: '✍️ Đánh giá sản phẩm' }
-            ],
-            [
-                { text: '📊 Xem trạng thái' },
-                { text: '🛑 Dừng kịch bản' }
-            ],
-            [
-                { text: '📋 Danh sách Apps' },
-                { text: '❓ Trợ giúp' }
-            ]
-        ],
-        resize_keyboard: true,
-        one_time_keyboard: false
-    };
-    const defaultInlineKeyboard = {
-        inline_keyboard: [
-            [
-                { text: '🚀 Chạy Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
-            ],
-            [
-                { text: '🌱 Chạy Nuôi Profile (37-66)', callback_data: '/run app=warmup profiles=37-66' },
-                { text: '📈 Chạy Rank QA (37-66)', callback_data: '/run app=derma profiles=37-66' }
-            ],
-            [
-                { text: '✍️ Đánh giá sản phẩm', callback_data: '/review' },
-                { text: '📊 Xem trạng thái', callback_data: '/status' }
-            ],
-            [
-                { text: '🛑 Dừng kịch bản', callback_data: '/stop' }
-            ],
-            [
-                { text: '📋 Danh sách Apps', callback_data: '/list' },
-                { text: '❓ Trợ giúp', callback_data: '/help' }
-            ]
-        ]
-    };
     console.log(`Telegram bot started. DEFAULT_APP_ID=${defaultAppId}, OMNILOGIN_HOST=${omniHost}`);
     await telegram
         .sendMessage(allowedChatId, welcomeText(omniHost), defaultInlineKeyboard)
