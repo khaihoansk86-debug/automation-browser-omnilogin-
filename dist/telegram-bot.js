@@ -714,26 +714,7 @@ function readJsonFileSafe(path) {
     return null;
 }
 const defaultMenuKeyboard = {
-    keyboard: [
-        [
-            { text: '🚀 Chạy Index GSC (Profile 37)' },
-            { text: '🌱 Chạy Nuôi Profile (Profiles 37-66)' }
-        ],
-        [
-            { text: '📈 Chạy Rank QA (Profiles 37-66)' },
-            { text: '✍️ Đánh giá sản phẩm' }
-        ],
-        [
-            { text: '📊 Xem trạng thái' },
-            { text: '🛑 Dừng kịch bản' }
-        ],
-        [
-            { text: '📋 Danh sách Apps' },
-            { text: '❓ Trợ giúp' }
-        ]
-    ],
-    resize_keyboard: true,
-    one_time_keyboard: false
+    remove_keyboard: true
 };
 const defaultInlineKeyboard = {
     inline_keyboard: [
@@ -1062,7 +1043,7 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                     await telegram.deleteMessage(chatId, statusMessageId).catch(() => { });
                     statusMessageId = null;
                 }
-                await telegram.sendMessage(chatId, reportText, defaultInlineKeyboard);
+                await telegram.sendMessage(chatId, reportText, defaultMenuKeyboard);
                 if (shouldSendFile) {
                     const txtFilePath = 'C:\\Users\\Admin\\Downloads\\khaihoanderma.txt';
                     if (existsSync(txtFilePath)) {
@@ -1093,7 +1074,7 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
             await telegram.deleteMessage(chatId, statusMessageId).catch(() => { });
             statusMessageId = null;
         }
-        await telegram.sendMessage(chatId, reportText, defaultInlineKeyboard);
+        await telegram.sendMessage(chatId, reportText, defaultMenuKeyboard);
         return { ok: true };
     }
     catch (error) {
@@ -1110,7 +1091,7 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
             await telegram.deleteMessage(chatId, statusMessageId).catch(() => { });
             statusMessageId = null;
         }
-        await telegram.sendMessage(chatId, failText, defaultInlineKeyboard);
+        await telegram.sendMessage(chatId, failText, defaultMenuKeyboard);
         return { ok: false, error: message };
     }
 }

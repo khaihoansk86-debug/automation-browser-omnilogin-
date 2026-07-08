@@ -7,7 +7,7 @@ $stderr = Join-Path $root "telegram-bot.err.log"
 $startupLog = Join-Path $root "telegram-bot-startup.log"
 
 $running = Get-CimInstance Win32_Process -Filter "name = 'node.exe'" |
-  Where-Object { $_.CommandLine -like "*dist\telegram-bot.js*" }
+  Where-Object { $_.CommandLine -match "dist[/\\]telegram-bot\.js" }
 
 if ($running) {
   $ids = ($running | ForEach-Object { $_.ProcessId }) -join ", "
