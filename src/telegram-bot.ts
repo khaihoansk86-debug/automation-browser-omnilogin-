@@ -659,7 +659,7 @@ function helpText(defaultAppId: string) {
     '',
     '<b>5. Tác vụ Đánh giá tự động</b>',
     `• Gõ lệnh ${code('/review')} hoặc nhắn ${code('tự động đánh giá sản phẩm derma')}`,
-    '  Bot sẽ tự quét sản phẩm Flash sale và dùng profile phù hợp để gửi đánh giá 5 sao độc bản.',
+    '  Bot sẽ tự quét Sản phẩm mới về và dùng profile phù hợp để gửi đánh giá 5 sao độc bản.',
     '',
     '<b>6. Lệnh điều khiển & Kiểm tra</b>',
     `• ${code('/status')} : Kiểm tra tiến trình đang chạy trực tiếp`,
@@ -1545,7 +1545,7 @@ async function main() {
           state.appId = 'auto-review';
           state.startedAt = new Date().toISOString();
           state.command = text;
-          state.lastMessage = 'Đang chạy kịch bản tự động đánh giá sản phẩm Flash Sale';
+          state.lastMessage = 'Đang chạy kịch bản tự động đánh giá sản phẩm mới về';
 
           const statusMsg = await telegram.sendMessage(
             chatId,
@@ -1606,7 +1606,7 @@ async function main() {
                   let formatted = trimmed;
                   if (trimmed.includes('Found') && trimmed.includes('product URLs')) {
                     const count = trimmed.match(/Found (\d+) product/)?.[1] || '12';
-                    formatted = `📋 Tìm thấy <b>${count} sản phẩm</b> trong mục Flash Sale.`;
+                    formatted = `📋 Tìm thấy <b>${count} sản phẩm</b> trong mục Sản Phẩm Mới Về.`;
                   } else if (trimmed.includes('Checking product:')) {
                     const url = trimmed.split('Checking product:')[1].trim();
                     const basename = url.split('/product/')[1]?.replace(/\/$/, '') || url;
@@ -1650,7 +1650,7 @@ async function main() {
                 ? [
                     '✅ <b>HOÀN THÀNH TỰ ĐỘNG ĐÁNH GIÁ DERMA!</b>',
                     '--------------------------------------------',
-                    '🎯 Kịch bản tự động đánh giá sản phẩm Flash Sale đã kết thúc thành công.',
+                    '🎯 Kịch bản tự động đánh giá Sản Phẩm Mới Về đã kết thúc thành công.',
                     '--------------------------------------------'
                   ].join('\n')
                 : [
