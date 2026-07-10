@@ -180,10 +180,30 @@ async function getKeywordFromGscPool(config) {
 
     if (candidates.length === 0) return null;
 
-    const randomIndex = Math.floor(Math.random() * candidates.length);
-    const selectedItem = candidates[randomIndex];
+    // Calculate weights to prioritize lower clicks and lower impressions
+    const candidatesWithWeights = candidates.map((item) => {
+      const C = item.clicks;
+      const I = item.impressions;
+      // Weight is inversely proportional to clicks (C+1) and log10 of impressions (I+10)
+      const weight = (1 / (C + 1)) * (1 / Math.log10(I + 10));
+      return { item, weight };
+    });
+
+    const totalWeight = candidatesWithWeights.reduce((sum, c) => sum + c.weight, 0);
+    if (totalWeight <= 0) return null;
+
+    let rand = Math.random() * totalWeight;
+    let selectedItem = candidates[0];
+    for (const c of candidatesWithWeights) {
+      rand -= c.weight;
+      if (rand <= 0) {
+        selectedItem = c.item;
+        break;
+      }
+    }
+
     console.log(
-      '[gsc] selected keyword (uniform random): ' +
+      '[gsc] selected keyword (weighted random - prioritizing low clicks/impressions): ' +
         JSON.stringify({
           keyword: selectedItem.keyword,
           impressions: selectedItem.impressions,
