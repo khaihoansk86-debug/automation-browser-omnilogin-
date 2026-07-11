@@ -19,3 +19,7 @@ dist/*.tsbuildinfo
 # Local State Databases
 reviewed-products.json
 used-reviews.json
+
+# CodeGraph database
+.codegraph/
+
