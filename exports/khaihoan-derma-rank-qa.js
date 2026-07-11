@@ -101,10 +101,26 @@ async function waitWithinBudget(ms, deadline) {
   return remainingMs(deadline) > 0;
 }
 
+async function safeMouseMove(x, y, options) {
+  try {
+    await page.mouse.move(x, y, options);
+  } catch (error) {
+    console.log('[mouse] move error:', error.message || String(error));
+  }
+}
+
+async function safeMouseWheel(deltaX, deltaY) {
+  try {
+    await page.mouse.wheel(deltaX, deltaY);
+  } catch (error) {
+    console.log('[mouse] wheel error:', error.message || String(error));
+  }
+}
+
 async function moveMouseNaturally() {
   const x = 120 + Math.floor(Math.random() * 980);
   const y = 120 + Math.floor(Math.random() * 520);
-  await page.mouse.move(x, y, { steps: 8 + Math.floor(Math.random() * 18) });
+  await safeMouseMove(x, y, { steps: 8 + Math.floor(Math.random() * 18) });
 }
 
 async function scanGoogleResultsNaturally(label, options = {}) {
@@ -114,7 +130,7 @@ async function scanGoogleResultsNaturally(label, options = {}) {
     : 2 + Math.floor(Math.random() * 3);
   for (let index = 0; index < downSteps; index++) {
     if (Math.random() < 0.7) await moveMouseNaturally();
-    await page.mouse.wheel(0, 360 + Math.floor(Math.random() * 520));
+    await safeMouseWheel(0, 360 + Math.floor(Math.random() * 520));
     await wait(900 + Math.floor(Math.random() * 1400));
   }
 
@@ -125,7 +141,7 @@ async function scanGoogleResultsNaturally(label, options = {}) {
     : 1 + Math.floor(Math.random() * 3);
   for (let index = 0; index < upSteps; index++) {
     if (Math.random() < 0.7) await moveMouseNaturally();
-    await page.mouse.wheel(0, -(220 + Math.floor(Math.random() * 420)));
+    await safeMouseWheel(0, -(220 + Math.floor(Math.random() * 420)));
     await wait(900 + Math.floor(Math.random() * 1600));
   }
 }
@@ -612,7 +628,7 @@ async function findTargetResultWithScrolling(targetDomain, keyword) {
 
       if (attempt < scrollAttempts - 1) {
         if (Math.random() < 0.7) await moveMouseNaturally();
-        await page.mouse.wheel(0, 600 + Math.floor(Math.random() * 400));
+        await safeMouseWheel(0, 600 + Math.floor(Math.random() * 400));
         await wait(800 + Math.floor(Math.random() * 800));
       }
     }
@@ -920,7 +936,7 @@ async function scrollPageForQa(deadline) {
   for (const deltaY of steps) {
     if (remainingMs(deadline) <= 0) return;
     if (Math.random() < 0.45) await moveMouseNaturally();
-    await page.mouse.wheel(0, deltaY);
+    await safeMouseWheel(0, deltaY);
     await waitWithinBudget(900 + Math.floor(Math.random() * 700), deadline);
   }
 }
@@ -957,7 +973,7 @@ async function readPageWithinBudget(minSeconds, maxSeconds, deadline, stepType =
     const direction = Math.random() < 0.86 ? 1 : -1;
     const deltaY = direction * (320 + Math.floor(Math.random() * 760));
     if (Math.random() < 0.55) await moveMouseNaturally();
-    await page.mouse.wheel(0, deltaY);
+    await safeMouseWheel(0, deltaY);
     await waitWithinBudget(1100 + Math.floor(Math.random() * 2400), Math.min(localDeadline, deadline));
   }
 
@@ -979,7 +995,7 @@ async function readPageForDuration(minSeconds, maxSeconds) {
     const direction = Math.random() < 0.82 ? 1 : -1;
     const deltaY = direction * (260 + Math.floor(Math.random() * 620));
     if (Math.random() < 0.55) await moveMouseNaturally();
-    await page.mouse.wheel(0, deltaY);
+    await safeMouseWheel(0, deltaY);
     await waitWithinBudget(1100 + Math.floor(Math.random() * 2600), deadline);
   }
 
