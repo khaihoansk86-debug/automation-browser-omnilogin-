@@ -1477,6 +1477,37 @@ async function warmupNewsRead(config) {
   }
 }
 
+async function maybeAddToCart(deadline) {
+  if (remainingMs(deadline) <= 15000) return false;
+  const buttonSelectors = [
+    'button.single_add_to_cart_button',
+    'button.add_to_cart_button',
+    'a.add_to_cart_button',
+    'button:has-text("Thêm vào giỏ")',
+    'button:has-text("Mua ngay")'
+  ];
+
+  for (const selector of buttonSelectors) {
+    try {
+      const btn = page.locator(selector).first();
+      if ((await btn.count()) > 0 && (await btn.isVisible())) {
+        console.log('[audit] SEO Conversion: found Add to Cart button, clicking it!');
+        await btn.scrollIntoViewIfNeeded();
+        await wait(500 + Math.floor(Math.random() * 500));
+        await btn.click();
+        
+        // Wait for page/ajax load
+        await page.waitForLoadState('load', { timeout: 8000 }).catch(() => {});
+        await wait(2000 + Math.floor(Math.random() * 2000));
+        return true;
+      }
+    } catch (e) {
+      console.log('[audit] add to cart click failed:', e.message || String(e));
+    }
+  }
+  return false;
+}
+
 async function auditTargetSite(config, startUrl) {
   console.log('[step4] audit target site ' + new Date().toISOString());
   reportStep('audit_start');
@@ -1487,6 +1518,7 @@ async function auditTargetSite(config, startUrl) {
   const deadline = startedAt + targetDurationMs;
   const visitedPages = [];
   const visitedSet = new Set();
+  let addedToCart = false;
 
   try {
     const firstUrl = cleanUrl(startUrl);
@@ -1518,6 +1550,12 @@ async function auditTargetSite(config, startUrl) {
   await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
   await maybeInspectProductImages('[audit] first product image', deadline);
   await scrollToRelatedProducts();
+  
+  // Try to simulate purchase/add-to-cart on 35% of runs
+  if (Math.random() < 0.35) {
+    addedToCart = await maybeAddToCart(deadline);
+  }
+
   const firstReadStats = await readPageWithinBudget(35, 70, deadline, 'audit');
   visitedPages.push({
     ...(await auditCurrentPage(config.targetDomain)),
@@ -1537,6 +1575,12 @@ async function auditTargetSite(config, startUrl) {
     await clickOrGotoInternalLink(cleanLink, deadline);
     await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
     await maybeInspectProductImages('[audit] related product image', deadline);
+    
+    // If not already added to cart, try adding to cart on subsequent pages too
+    if (!addedToCart && Math.random() < 0.30) {
+      addedToCart = await maybeAddToCart(deadline);
+    }
+
     const readStats = await readPageWithinBudget(35, 75, deadline, 'audit');
     visitedPages.push({
       ...(await auditCurrentPage(config.targetDomain)),
@@ -1552,6 +1596,7 @@ async function auditTargetSite(config, startUrl) {
     elapsedMs: Date.now() - startedAt,
     stoppedByBudget: remainingMs(deadline) <= 5000,
     visitedPages,
+    addedToCart,
   };
 }
 
@@ -1583,6 +1628,41 @@ async function main() {
   const targetScan = await findTargetResultWithScrolling(config.targetDomain, keyword);
   const topResults = targetScan.topResults;
   const targetResult = targetScan.targetResult;
+  
+  let bouncedCompetitor = null;
+  if (targetResult && topResults && topResults.length > 0) {
+    const competitors = topResults.filter(
+      (r) => !isTargetHost(r.host, config.targetDomain) && /^https?:\/\//i.test(r.url)
+    );
+    if (competitors.length > 0) {
+      const compCandidate = competitors.slice(0, 5);
+      const randomCompetitor = compCandidate[Math.floor(Math.random() * compCandidate.length)];
+      console.log('[derma] SEO Pogosticking: clicking competitor first: ' + randomCompetitor.url);
+      try {
+        const clickResult = await tryClickGoogleResult(randomCompetitor, '[competitor]', {
+          searchUrl: await page.url(),
+          allowFallback: false
+        });
+        if (clickResult.clicked) {
+          const compStaySeconds = 3 + Math.floor(Math.random() * 5);
+          console.log(`[derma] SEO Pogosticking: staying on competitor for ${compStaySeconds}s`);
+          await wait(compStaySeconds * 1000);
+          console.log('[derma] SEO Pogosticking: bouncing back to Google search');
+          await page.goBack();
+          await page.waitForLoadState('domcontentloaded');
+          await wait(1500 + Math.floor(Math.random() * 1500));
+          bouncedCompetitor = {
+            url: randomCompetitor.url,
+            title: randomCompetitor.title,
+            staySeconds: compStaySeconds
+          };
+        }
+      } catch (err) {
+        console.log('[derma] SEO Pogosticking: competitor click failed:', err.message || String(err));
+      }
+    }
+  }
+
   const targetStartUrl = targetResult ? cleanUrl(targetResult.url) : cleanUrl(config.targetBaseUrl);
   console.log(
     '[derma] open target from Google: ' +
@@ -1607,6 +1687,7 @@ async function main() {
     targetDomain: config.targetDomain,
     googleRank: targetResult ? targetResult.position : null,
     targetResult,
+    bouncedCompetitor,
     topResults,
     siteAudit,
     finalUrl: await page.url(),
