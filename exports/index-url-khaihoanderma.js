@@ -24,12 +24,94 @@ async function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function gotoSafe(url, label = '[nav]') {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      console.log(`${label} Navigating to: ${url}`);
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      return;
+    } catch (err) {
+      console.warn(`${label} Attempt ${attempt + 1} failed: ${err.message}`);
+      if (attempt >= 2) throw err;
+      await wait(3000);
+    }
+  }
+}
+
+async function generateReviewWithAI(productTitle, productDesc, openAiApiKey) {
+  const prompt = `Bạn là một khách hàng nữ người Việt Nam mua hàng online.
+Hãy viết một đánh giá sản phẩm 5 sao cực kỳ tự nhiên, ngắn gọn (1-2 câu), thực tế bằng tiếng Việt, tập trung vào công dụng của sản phẩm.
+Thông tin sản phẩm:
+- Tên sản phẩm: ${productTitle}
+- Mô tả/Công dụng: ${productDesc}
+
+Yêu cầu:
+1. Đánh giá phải bám sát công dụng thực tế của sản phẩm (ví dụ: trị mụn thì khen xẹp mụn, phục hồi thì dịu da giảm đỏ rát, kem chống nắng thì thấm nhanh...).
+2. Văn phong tự nhiên, ngắn gọn, giống người dùng thật viết (dùng các từ như "nha mọi người", "êm lắm", "rất ưng", "giao nhanh", "đóng gói kỹ").
+3. Tạo một tên khách hàng nữ người Việt Nam tự nhiên, ngẫu nhiên (ví dụ: "Nguyễn Hồng Vy", "Lê Thu Trang",...).
+4. Tạo một địa chỉ email ngẫu nhiên phù hợp với tên khách hàng nữ đó (ví dụ: "vyhong95@gmail.com", "thutrangle.98@gmail.com").
+5. Đảm bảo tên khách hàng và nội dung đánh giá độc nhất, không trùng lặp.
+
+Hãy trả về dưới định dạng JSON với cấu trúc sau:
+{
+  "name": "Tên khách hàng nữ",
+  "email": "Email tương ứng",
+  "review": "Nội dung đánh giá sản phẩm"
+}`;
+
+  let attempts = 0;
+  while (attempts < 3) {
+    attempts++;
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiApiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.8
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenAI API returned error status ${response.status}: ${errText}`);
+      }
+
+      const data = await response.json();
+      const contentText = data.choices?.[0]?.message?.content;
+      if (!contentText) throw new Error('OpenAI returned empty message content.');
+
+      const parsed = JSON.parse(contentText);
+      const name = String(parsed.name || '').trim();
+      const email = String(parsed.email || '').trim();
+      const review = String(parsed.review || '').trim();
+
+      if (!name || !email || !review) {
+        throw new Error('OpenAI returned invalid JSON structure.');
+      }
+
+      return { name, email, review };
+    } catch (err) {
+      console.warn(`[AI-Warning] Attempt ${attempts} failed: ${err.message}`);
+      if (attempts >= 3) throw err;
+    }
+  }
+}
+
 async function main() {
   const config = {
     filePath: String(param('filePath') || DEFAULTS.filePath),
     progressDbPath: String(param('progressDbPath') || DEFAULTS.progressDbPath),
     exportPath: String(param('exportPath') || DEFAULTS.exportPath),
-    gscUrl: String(param('gscUrl') || DEFAULTS.gscUrl)
+    gscUrl: String(param('gscUrl') || DEFAULTS.gscUrl),
+    openAiApiKey: String(param('openAiApiKey') || '')
   };
 
   async function removeUrlFromFile(filePath, urlToRemove) {
@@ -70,7 +152,7 @@ async function main() {
   }
 
   // Load progress database
-  let progress = { indexed: [] };
+  let progress = { indexed: [], reviewed: [] };
   try {
     const rawProgress = await omni.file.read(config.progressDbPath);
     if (rawProgress) {
@@ -80,10 +162,135 @@ async function main() {
     console.log('[index] Starting fresh progress tracking');
   }
 
-  if (!Array.isArray(progress.indexed)) {
-    progress.indexed = [];
+  if (!Array.isArray(progress.indexed)) progress.indexed = [];
+  if (!Array.isArray(progress.reviewed)) progress.reviewed = [];
+
+  // ==========================================
+  // PHASE 1: WooCommerce Product Reviews
+  // ==========================================
+  console.log('[review] Starting product review phase for URLs...');
+  for (let i = 0; i < urls.length; i++) {
+    const targetUrl = urls[i];
+    const isProduct = targetUrl.includes('/product/') || targetUrl.includes('/san-pham/');
+    
+    if (!isProduct) {
+      console.log(`[review] URL [${i + 1}/${urls.length}] is not a product. Skipping review: ${targetUrl}`);
+      continue;
+    }
+
+    if (progress.reviewed.includes(targetUrl)) {
+      console.log(`[review] URL [${i + 1}/${urls.length}] already reviewed. Skipping: ${targetUrl}`);
+      continue;
+    }
+
+    console.log(`\n--------------------------------------------`);
+    console.log(`[review] Reviewing product [${i + 1}/${urls.length}]: ${targetUrl}`);
+    reportStep('derma_start', `Đánh giá: ${targetUrl}`);
+
+    try {
+      await gotoSafe(targetUrl, '[review]');
+      await wait(3000);
+
+      // Scroll and open review tab
+      const reviewTab = page.locator('#tab-title-reviews a');
+      if (await reviewTab.count() > 0) {
+        await reviewTab.scrollIntoViewIfNeeded().catch(() => {});
+        await reviewTab.click().catch(() => {});
+      } else {
+        await page.evaluate(() => {
+          const tab = document.querySelector('#tab-title-reviews a');
+          if (tab) tab.click();
+        });
+      }
+      await wait(2000);
+
+      // Check if reviews already exist
+      const hasReviews = (await page.locator('.commentlist li').count()) > 0;
+      if (hasReviews) {
+        console.log('[review] Product already has reviews on website. Skipping review.');
+        progress.reviewed.push(targetUrl);
+        await omni.file.write(config.progressDbPath, JSON.stringify(progress, null, 2));
+        continue;
+      }
+
+      // Check if comment form exists
+      const commentFormExists = (await page.locator('textarea#comment').count()) > 0;
+      if (!commentFormExists) {
+        console.log('[review] Review form not found/disabled. Skipping.');
+        continue;
+      }
+
+      if (!config.openAiApiKey) {
+        console.warn('[review] OpenAI API Key is missing. Skipping AI review generation.');
+        continue;
+      }
+
+      // Extract details
+      const { productTitle, productDesc } = await page.evaluate(() => {
+        const titleEl = document.querySelector('h1.product-title, h1.product_title');
+        const descEl = document.querySelector('.woocommerce-product-details__short-description, #tab-description');
+        return {
+          productTitle: titleEl?.textContent?.trim() || '',
+          productDesc: descEl?.textContent?.trim() || ''
+        };
+      });
+
+      console.log(`[review] Extracted product title: "${productTitle}"`);
+      reportStep('audit_start', 'Đang viết đánh giá bằng AI...');
+      
+      const generated = await generateReviewWithAI(productTitle, productDesc, config.openAiApiKey);
+      console.log(`[review] Submitting review for "${generated.name}": "${generated.review}"`);
+      
+      // Submit review
+      await page.evaluate(() => {
+        const star5 = document.querySelector('.stars a.star-5');
+        if (star5) {
+          star5.click();
+          star5.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+        const ratingSelect = document.querySelector('select#rating');
+        if (ratingSelect) {
+          ratingSelect.value = '5';
+          ratingSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      await wait(1000);
+
+      await page.locator('textarea#comment').fill(generated.review);
+      await page.locator('input#author').fill(generated.name);
+      await page.locator('input#email').fill(generated.email);
+      await wait(1500);
+
+      await page.evaluate(() => {
+        const form = document.querySelector('#commentform');
+        if (form) {
+          HTMLFormElement.prototype.submit.call(form);
+        }
+      });
+      
+      await wait(8000);
+
+      const currentUrl = await page.url();
+      const commentValue = await page.locator('textarea#comment').inputValue().catch(() => '');
+      const isSuccess = currentUrl.includes('unapproved=') || currentUrl.includes('comment-') || commentValue === '';
+
+      if (isSuccess) {
+        console.log('[review] Review submitted successfully!');
+        reportStep('audit_done', 'Đã đánh giá xong');
+        progress.reviewed.push(targetUrl);
+        await omni.file.write(config.progressDbPath, JSON.stringify(progress, null, 2));
+      } else {
+        console.warn('[review] Review submission validation failed.');
+      }
+    } catch (err) {
+      console.error('[review] Error during product review:', err.message || err);
+    }
   }
 
+  // ==========================================
+  // PHASE 2: GSC Indexing
+  // ==========================================
+  console.log('[index] Starting GSC indexing phase...');
   console.log(`[index] Navigating to GSC: ${config.gscUrl}`);
   reportStep('gsc_navigating', 'Đang mở Google Search Console...');
   await page.goto(config.gscUrl, { timeout: 60000, waitUntil: 'domcontentloaded' });
@@ -109,8 +316,6 @@ async function main() {
       continue;
     }
 
-
-
     console.log(`\n--------------------------------------------`);
     console.log(`[index] URL [${i + 1}/${urls.length}] Inspecting: ${targetUrl}`);
     reportStep('derma_start', `${i + 1}/${urls.length}: ${targetUrl}`);
@@ -124,7 +329,7 @@ async function main() {
       await input.click();
       await page.waitForTimeout(1000);
 
-      // Set search value programmatically to ensure React/Angular registration
+      // Set search value programmatically
       await page.evaluate(({ selector, value }) => {
         const el = document.querySelector(selector);
         if (el) {
@@ -137,14 +342,13 @@ async function main() {
       await page.waitForTimeout(1000);
       await input.press('Enter');
 
-      console.log('[index] Pressed Enter. Waiting for inspection data from Google Index...');
+      console.log('[index] Pressed Enter. Waiting for inspection data...');
       reportStep('derma_page', { pageNum: i + 1, maxPages: urls.length });
 
-      // Wait for Inspection Page results to load (checking for Request Indexing button)
+      // Wait for Inspection Page results to load
       const requestBtnSelector = 'div[role="button"]:has-text("Request indexing"), div[role="button"]:has-text("Yêu cầu lập chỉ mục"), div[role="button"]:has-text("Request again"), div[role="button"]:has-text("Yêu cầu lại")';
       await page.locator(requestBtnSelector).first().waitFor({ state: 'visible', timeout: 50000 });
       
-      // GSC retrieves data asynchronously. Wait for GSC loading/retrieving to finish and render the new URL's status card
       console.log('[index] Waiting for GSC to load new URL status card...');
       let statusLoaded = false;
       let pageText = '';
@@ -156,9 +360,7 @@ async function main() {
                              pageText.includes('Đang truy xuất') || 
                              pageText.includes('Retrieving') || 
                              pageText.includes('truy xuất');
-        if (isRetrieving) {
-          continue; // GSC is still loading data, keep waiting
-        }
+        if (isRetrieving) continue;
         
         const hasStatus = pageText.includes('URL is on Google') || 
                           pageText.includes('URL đã nằm trên Google') ||
@@ -180,12 +382,11 @@ async function main() {
         console.log('[index] Warning: Status card load timed out or URL mismatch.');
       }
 
-      // Check current index status using strict validation (URL is not on Google contains URL is on Google, so we must exclude "not" / "không")
       const isNotIndexed = pageText.includes('URL is not on Google') || pageText.includes('URL không nằm trên Google') || pageText.includes('không có trên Google') || pageText.includes('not in the index');
       const isAlreadyIndexed = (pageText.includes('URL is on Google') || pageText.includes('URL đã nằm trên Google') || pageText.includes('URL đã có trên Google') || pageText.includes('URL is in the index')) && !isNotIndexed;
 
       if (isAlreadyIndexed) {
-        console.log('[index] URL is already indexed (GREEN status). Skipping request.');
+        console.log('[index] URL is already indexed. Skipping GSC request.');
         reportStep('derma_found', { keyword: targetUrl, pageNum: 1, position: 'Indexed' });
         alreadyIndexedCount++;
         progress.indexed.push(targetUrl);
@@ -195,21 +396,18 @@ async function main() {
         continue;
       }
 
-      console.log('[index] URL is not indexed. Clicking Request Indexing...');
+      console.log('[index] URL is not indexed. Requesting Indexing...');
       reportStep('audit_start', 'Đang yêu cầu lập chỉ mục...');
 
       const requestBtn = page.locator(requestBtnSelector).first();
       await requestBtn.scrollIntoViewIfNeeded().catch(() => {});
       await requestBtn.click();
 
-      console.log('[index] Live test started. Waiting for completion modal...');
+      console.log('[index] Live test started...');
       reportStep('audit_reading', { elapsed: 0, total: 180, url: 'Đang chạy Live Test...' });
 
-      // Poll dialog states
       let submitted = false;
       const maxLiveTestSeconds = Math.floor(Math.random() * (90 - 60 + 1)) + 60;
-      console.log(`[index] GSC Live test running. Max wait time: ${maxLiveTestSeconds}s.`);
-      
       const maxAttempts = Math.floor(maxLiveTestSeconds / 5);
       for (let w = 0; w < maxAttempts; w++) {
         await page.waitForTimeout(5000);
@@ -217,10 +415,9 @@ async function main() {
         reportStep('audit_reading', { 
           elapsed: elapsed, 
           total: maxLiveTestSeconds, 
-          url: `Đang chạy Live Test: ${elapsed}/${maxLiveTestSeconds}s (Ngẫu nhiên: ${maxLiveTestSeconds}s)...` 
+          url: `Đang chạy Live Test: ${elapsed}/${maxLiveTestSeconds}s...` 
         });
 
-        // Read page text to determine completion
         const pageText = await page.locator('body').innerText().catch(() => '');
         const hasFinished = pageText.includes('Indexing requested') ||
                             pageText.includes('Đã yêu cầu lập chỉ mục') ||
@@ -240,60 +437,48 @@ async function main() {
           if (isQuotaError) {
             console.log('[index] Google Search Console daily indexing quota exceeded.');
             quotaExceeded = true;
-            unindexedUrls = urls.slice(i); // Current and all subsequent URLs
+            unindexedUrls = urls.slice(i);
           } else {
-            console.log('[index] Google Search Console indexing requested successfully.');
+            console.log('[index] Indexing requested successfully.');
             submitted = true;
           }
 
-          // Locate and click the close button
           const actionBtn = page.locator('button:visible, div[role="button"]:visible').filter({ hasText: /Dismiss|Got it|Đã hiểu|Bỏ qua|Đóng|Close/i }).first();
           if (await actionBtn.count() > 0 && await actionBtn.isVisible()) {
-            console.log('[index] Clicking dialog close button.');
             await actionBtn.click().catch(() => {});
             await page.waitForTimeout(2000);
           }
 
-          // Click outside (body top-left) to clear focus and dismiss modal backdrop fully
           await page.locator('body').click({ position: { x: 10, y: 10 } }).catch(() => {});
           await page.waitForTimeout(1000);
           break;
         }
       }
 
-      if (quotaExceeded) {
-        break;
-      }
+      if (quotaExceeded) break;
 
       if (submitted) {
-        console.log('[index] Indexing requested successfully.');
         reportStep('audit_done', 'Hoàn tất gửi yêu cầu');
         successCount++;
         progress.indexed.push(targetUrl);
         await omni.file.write(config.progressDbPath, JSON.stringify(progress, null, 2));
         await removeUrlFromFile(config.filePath, targetUrl);
         
-        // Wait random delay of 60 to 90 seconds AFTER a successful submission
         const delaySec = Math.floor(Math.random() * (90 - 60 + 1)) + 60;
-        console.log(`[index] Waiting for random delay of ${delaySec} seconds after indexing submission...`);
+        console.log(`[index] Waiting for random delay of ${delaySec} seconds...`);
         for (let d = 0; d < delaySec; d += 5) {
           reportStep('audit_reading', { 
             elapsed: d, 
             total: delaySec, 
-            url: `Nghỉ giãn cách sau khi index: ${d}/${delaySec}s (Ngẫu nhiên: ${delaySec}s)...` 
+            url: `Nghỉ giãn cách: ${d}/${delaySec}s...` 
           });
           await page.waitForTimeout(5000);
         }
       } else {
-        console.warn('[index] Live test dialog wait timed out or failed.');
+        console.warn('[index] Live test failed.');
         hasError = true;
         errorMessage = 'Yêu cầu lập chỉ mục thất bại (không xuất hiện hộp thoại hoàn thành).';
-        unindexedUrls = urls.slice(i); // Current and all subsequent URLs
-        // Save failure screenshot locally for debugging
-        try {
-          const buf = await page.screenshot();
-          await omni.file.write(`C:\\Users\\Admin\\Downloads\\gsc-error-submit-${i}.png`, buf);
-        } catch (e) {}
+        unindexedUrls = urls.slice(i);
         break;
       }
 
@@ -301,23 +486,15 @@ async function main() {
       console.error(`[index] Error inspecting URL ${targetUrl}:`, inspectErr.message || inspectErr);
       hasError = true;
       errorMessage = inspectErr.message || String(inspectErr);
-      unindexedUrls = urls.slice(i); // Current and all subsequent URLs
-      
-      // Capture screenshot on error
-      try {
-        const buf = await page.screenshot();
-        await omni.file.write(`C:\\Users\\Admin\\Downloads\\gsc-error-inspect-${i}.png`, buf);
-      } catch (e) {}
+      unindexedUrls = urls.slice(i);
       break;
     }
   }
 
-  // Determine unindexed URLs if we finished cleanly
   if (!quotaExceeded && !hasError) {
     unindexedUrls = urls.filter(u => !progress.indexed.includes(u));
   }
 
-  // Export results JSON for the bot
   const finalOutput = {
     quotaExceeded,
     hasError,
@@ -329,7 +506,7 @@ async function main() {
   };
 
   await omni.file.write(config.exportPath, JSON.stringify(finalOutput, null, 2));
-  console.log('[index] Exported execution results to: ' + config.exportPath);
+  console.log('[index] Exported execution results.');
 }
 
 await main();

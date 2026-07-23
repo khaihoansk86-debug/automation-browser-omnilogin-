@@ -184,47 +184,75 @@ async function main() {
         await clearBrowserData(page);
         await page.goto(appConfig.targetBaseUrl, { timeout: 30000, waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(5000);
-        productUrls = (await page.evaluate(() => {
-            // Find the section/heading that contains "sản phẩm mới về" (case insensitive)
-            const allElements = Array.from(document.querySelectorAll('.section-title-container, h2, h3, h4, .block-title, [class*="title"]'));
-            const newProductsSection = allElements.find(el => el.textContent.trim().toLowerCase().includes('sản phẩm mới về'));
-            if (!newProductsSection) {
-                console.error('"Sản phẩm mới về" section not found on page.');
-                return [];
-            }
-            // Walk down siblings to find the nearest .row or grid container with products
-            let current = newProductsSection;
-            let productRow = null;
-            // Try parent's siblings first (in case heading is nested inside a wrapper)
-            const parents = [newProductsSection, newProductsSection.parentElement, newProductsSection.parentElement?.parentElement].filter(Boolean);
-            outer: for (const parent of parents) {
-                let sibling = parent;
-                while (sibling) {
-                    sibling = sibling.nextElementSibling;
-                    if (sibling && sibling.querySelector('.product-small, .product, article.product')) {
-                        productRow = sibling;
-                        break outer;
+        let homepageProducts = [];
+        try {
+            homepageProducts = (await page.evaluate(() => {
+                // Find the section/heading that contains "sản phẩm mới về" (case insensitive)
+                const allElements = Array.from(document.querySelectorAll('.section-title-container, h2, h3, h4, .block-title, [class*="title"]'));
+                const newProductsSection = allElements.find(el => el.textContent.trim().toLowerCase().includes('sản phẩm mới về'));
+                if (!newProductsSection) {
+                    console.error('"Sản phẩm mới về" section not found on page.');
+                    return [];
+                }
+                // Walk down siblings to find the nearest .row or grid container with products
+                let productRow = null;
+                // Try parent's siblings first (in case heading is nested inside a wrapper)
+                const parents = [newProductsSection, newProductsSection.parentElement, newProductsSection.parentElement?.parentElement].filter(Boolean);
+                outer: for (const parent of parents) {
+                    let sibling = parent;
+                    while (sibling) {
+                        sibling = sibling.nextElementSibling;
+                        if (sibling && sibling.querySelector('.product-small, .product, article.product')) {
+                            productRow = sibling;
+                            break outer;
+                        }
                     }
                 }
-            }
-            if (!productRow) {
-                // Fallback: look inside the section's own parent for any product links
-                const sectionParent = newProductsSection.closest('section, .section, .block, div') || newProductsSection.parentElement;
-                if (sectionParent)
-                    productRow = sectionParent;
-            }
-            if (!productRow) {
-                console.error('"Sản phẩm mới về" product row not found.');
-                return [];
-            }
-            // Extract all product links inside the container
-            const anchors = Array.from(productRow.querySelectorAll('a'));
-            return anchors
-                .map((a) => a.href)
-                .filter((href) => href.includes('/product/') || href.includes('/san-pham/'))
-                .filter((href, idx, self) => self.indexOf(href) === idx);
-        }));
-        console.log(`Found ${productUrls.length} product URLs in "Sản phẩm mới về" section.`);
+                if (!productRow) {
+                    // Fallback: look inside the section's own parent for any product links
+                    const sectionParent = newProductsSection.closest('section, .section, .block, div') || newProductsSection.parentElement;
+                    if (sectionParent)
+                        productRow = sectionParent;
+                }
+                if (!productRow) {
+                    console.error('"Sản phẩm mới về" product row not found.');
+                    return [];
+                }
+                // Extract all product links inside the container
+                const anchors = Array.from(productRow.querySelectorAll('a'));
+                return anchors
+                    .map((a) => a.href)
+                    .filter((href) => href.includes('/product/') || href.includes('/san-pham/'))
+                    .filter((href, idx, self) => self.indexOf(href) === idx);
+            }));
+            console.log(`Found ${homepageProducts.length} product URLs in "Sản phẩm mới về" section on homepage.`);
+        }
+        catch (e) {
+            console.error('Failed to parse homepage "Sản phẩm mới về" section:', e.message || e);
+        }
+        // 2. Scrape shop page to bypass homepage cache
+        let shopProducts = [];
+        try {
+            const shopUrl = `${appConfig.targetBaseUrl.replace(/\/$/, '')}/cua-hang/`;
+            console.log(`Navigating to shop page: ${shopUrl} to bypass homepage caching...`);
+            await page.goto(shopUrl, { timeout: 30000, waitUntil: 'domcontentloaded' });
+            await page.waitForTimeout(4000);
+            shopProducts = (await page.evaluate(() => {
+                const anchors = Array.from(document.querySelectorAll('a'));
+                return anchors
+                    .map((a) => a.href)
+                    .filter((href) => href.includes('/product/') || href.includes('/san-pham/'))
+                    .filter((href, idx, self) => self.indexOf(href) === idx);
+            }));
+            console.log(`Found ${shopProducts.length} product URLs on /cua-hang/ shop page.`);
+        }
+        catch (e) {
+            console.error('Failed to fetch/parse /cua-hang/ shop page:', e.message || e);
+        }
+        // Combine and unique them
+        const combinedUrls = [...homepageProducts, ...shopProducts];
+        productUrls = combinedUrls.filter((href, idx, self) => self.indexOf(href) === idx);
+        console.log(`Total unique product URLs extracted for review check: ${productUrls.length}`);
         // Check reviews on target website for each product using the already opened browser
         for (const productUrl of productUrls) {
             if (reviewedProducts.includes(productUrl)) {

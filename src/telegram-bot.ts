@@ -93,7 +93,7 @@ const DEFAULT_APP_ALIASES: AppAlias[] = [
   {
     alias: 'index',
     appId: 'index-url-khaihoanderma',
-    name: 'Index URL Khai Hoàn Derma',
+    name: 'Đánh giá & Index URL Khai Hoàn Derma',
   },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
@@ -617,15 +617,14 @@ function welcomeText(omniHost: string) {
     '<b>╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯</b>',
     '',
     '⚡ <b>Bot hỗ trợ:</b>',
-    '- Lập chỉ mục GSC (Tự động index URL)',
+    '- Đánh giá & Index GSC (Tự động viết review & gửi index URL)',
     '- Nuôi / Warmup Profiles sạch (Tăng trust Chrome)',
     '- Tương tác SEO Google & Rank QA',
-    '- Đánh giá sản phẩm WooCommerce (AI viết bài)',
     '',
     '🔗 <b>Về hệ thống:</b>',
     '- Target Site: <code>khaihoanderma.com</code>',
     `- Host: <code>${omniHost}</code>`,
-    '- Hàng đợi GSC: Gửi file <code>.txt</code> trực tiếp vào bot',
+    '- Hàng đợi: Gửi file <code>.txt</code> chứa link sản phẩm/bài viết',
     '',
     '<i>Nhấp vào các nút dưới đây để chạy kịch bản nhanh hoặc gửi file .txt để cập nhật hàng đợi Index GSC.</i>'
   ].join('\n');
@@ -638,15 +637,15 @@ function helpText(defaultAppId: string) {
     '<b>1. Danh sách kịch bản (Workflow)</b>',
     `• ${code('derma')} : Quét thứ hạng Google + Lướt web Khải Hoàn Derma`,
     `• ${code('nuoi')}  : Nuôi tài khoản (đọc báo, xem YouTube, tìm kiếm ngẫu nhiên)`,
-    `• ${code('index')} : Tự động yêu cầu lập chỉ mục (Request Indexing) trên Google Search Console`,
+    `• ${code('index')} : Tự động Đánh giá & Index GSC các link trong file gửi lên`,
     '',
     '<b>2. Hướng dẫn chạy 1 profile</b>',
-    `• Lập chỉ mục GSC: ${code('/run app=index profile=37')}`,
+    `• Đánh giá & Index GSC: ${code('/run app=index profile=37')}`,
     `• Chạy Rank QA: ${code('/run app=derma profile=37')}`,
     `• Nuôi tài khoản: ${code('/run app=nuoi profile=1')}`,
     '',
     '<b>3. Hướng dẫn chạy hàng loạt (hỗ trợ dải profile, ví dụ 37-66)</b>',
-    `• Lập chỉ mục dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
+    `• Chạy Đánh giá & Index GSC dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
     `• Nuôi dải tài khoản: ${code('/run app=nuoi profiles=1-10 delay=60 close=1')}`,
     `• Chạy Rank QA dải: ${code('/run app=derma profiles=37-66 delay=60-180 close=1')}`,
     '',
@@ -657,11 +656,7 @@ function helpText(defaultAppId: string) {
     `• ${code('delay=...')} : Độ trễ ngẫu nhiên giữa các profile (ví dụ: ${code('60-120')} giây)`,
     `• ${code('close=1')} : Tự động đóng trình duyệt sau khi chạy xong (mặc định)`,
     '',
-    '<b>5. Tác vụ Đánh giá tự động</b>',
-    `• Gõ lệnh ${code('/review')} hoặc nhắn ${code('tự động đánh giá sản phẩm derma')}`,
-    '  Bot sẽ tự quét Sản phẩm mới về và dùng profile phù hợp để gửi đánh giá 5 sao độc bản.',
-    '',
-    '<b>6. Lệnh điều khiển & Kiểm tra</b>',
+    '<b>5. Lệnh điều khiển & Kiểm tra</b>',
     `• ${code('/status')} : Kiểm tra tiến trình đang chạy trực tiếp`,
     `• ${code('/stop')}   : Dừng chạy và đóng tất cả trình duyệt đang mở`,
     `• ${code('/list')}   : Xem danh sách đầy đủ các kịch bản đang hỗ trợ`,
@@ -682,7 +677,7 @@ function listText(aliases: AppAlias[], defaultAppId: string) {
     code('/run app=nuoi profiles=1,2,3 delay=60 close=1'),
     code('/run app=nuoi profiles=all delay=60 close=1'),
     code('/run app=derma profiles=1,2,3 delay=60 close=1'),
-    code('/review'),
+    code('/run app=index profile=37 close=1'),
     code('/status'),
     code('/stop'),
     '',
@@ -938,17 +933,14 @@ const defaultMenuKeyboard = {
 const defaultInlineKeyboard = {
   inline_keyboard: [
     [
-      { text: '🚀 Chạy Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
+      { text: '🚀 Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
     ],
     [
       { text: '🌱 Chạy Nuôi Profile (37-66)', callback_data: '/run app=warmup profiles=37-66' },
       { text: '📈 Chạy Rank QA (37-66)', callback_data: '/run app=derma profiles=37-66' }
     ],
     [
-      { text: '✍️ Đánh giá sản phẩm', callback_data: '/review' },
-      { text: '📊 Xem trạng thái', callback_data: '/status' }
-    ],
-    [
+      { text: '📊 Xem trạng thái', callback_data: '/status' },
       { text: '🛑 Dừng kịch bản', callback_data: '/stop' }
     ],
     [
@@ -976,9 +968,9 @@ async function runLocalAiAppScript(
   if (app.appId === 'profile-warmup-random') {
     statusLines.warmup = '🔵 Đang chạy các tác vụ duyệt web ngẫu nhiên...';
   } else if (app.appId === 'index-url-khaihoanderma') {
-    statusLines.navigating = '⚪ Mở Google Search Console';
-    statusLines.inspecting = '⚪ Kiểm tra trạng thái URL';
-    statusLines.submitting = '⚪ Gửi yêu cầu lập chỉ mục';
+    statusLines.navigating = '⚪ Đang chạy kịch bản Đánh giá & Index...';
+    statusLines.inspecting = '⚪ Đang đánh giá sản phẩm WooCommerce';
+    statusLines.submitting = '⚪ Đang khai báo lập chỉ mục GSC';
   } else {
     statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
     statusLines.search = '⚪ Tìm kiếm từ khóa Derma';
@@ -1006,30 +998,35 @@ async function runLocalAiAppScript(
 
     if (app.appId === 'index-url-khaihoanderma') {
       if (currentStep === 'gsc_navigating') {
-        statusLines.navigating = `🔵 ${escapeHtml(detail || 'Đang mở GSC...')}`;
+        statusLines.navigating = `🟢 Hoàn thành Đọc báo (Warmup)`;
+        statusLines.inspecting = `🟢 Hoàn thành Đánh giá sản phẩm`;
+        statusLines.submitting = `🔵 ${escapeHtml(detail || 'Đang mở GSC...')}`;
       } else if (currentStep === 'derma_start') {
-        statusLines.navigating = `🟢 Đã mở Google Search Console`;
-        statusLines.inspecting = `🔵 Đang kiểm tra URL: <code>${escapeHtml(detail || '')}</code>`;
-        statusLines.submitting = '⚪ Đang chờ...';
+        statusLines.submitting = `🔵 Đang kiểm tra URL GSC: <code>${escapeHtml(detail || '')}</code>`;
       } else if (currentStep === 'derma_page') {
-        statusLines.navigating = `🟢 Đã mở Google Search Console`;
-        statusLines.inspecting = `🔵 Đang phân tích dữ liệu Google Index (URL ${detail?.pageNum || 1}/${detail?.maxPages || 1})...`;
-        statusLines.submitting = '⚪ Đang chờ...';
+        statusLines.submitting = `🔵 Đang phân tích dữ liệu Google Index (URL ${detail?.pageNum || 1}/${detail?.maxPages || 1})...`;
       } else if (currentStep === 'derma_found') {
         const urlStr = typeof detail === 'string' ? detail : (detail?.keyword || '');
-        statusLines.inspecting = `🟢 Đã có sẵn trong chỉ mục (bỏ qua): <code>${escapeHtml(urlStr)}</code>`;
+        statusLines.submitting = `🟢 Đã index (bỏ qua): <code>${escapeHtml(urlStr)}</code>`;
       } else if (currentStep === 'audit_start') {
         statusLines.submitting = `🔵 Đang gửi yêu cầu lập chỉ mục...`;
       } else if (currentStep === 'audit_reading') {
         const elapsed = detail?.elapsed || 0;
         const total = detail?.total || 180;
-        statusLines.submitting = `🔵 Đang chạy Live Test: ${elapsed}/${total}s (Ngẫu nhiên: ${total}s)...`;
+        statusLines.submitting = `🔵 Đang chạy Live Test GSC: ${elapsed}/${total}s...`;
       } else if (currentStep === 'audit_done') {
-        statusLines.submitting = `🟢 Đã gửi yêu cầu thành công!`;
+        statusLines.submitting = `🟢 Đã gửi yêu cầu lập chỉ mục thành công!`;
       } else if (currentStep === 'gsc_quota_exceeded') {
         statusLines.submitting = `🔴 Đã hết hạn ngạch ngày của Google!`;
       } else if (currentStep === 'gsc_done') {
         statusLines.submitting = `🟢 Đã hoàn tất toàn bộ danh sách!`;
+      } else if (currentStep === 'review_start') {
+        statusLines.navigating = `🔵 Đang khởi động kịch bản Đánh giá & Index...`;
+        statusLines.inspecting = `🔵 Đang mở sản phẩm: <code>${escapeHtml(detail || '')}</code>`;
+      } else if (currentStep === 'review_generating') {
+        statusLines.inspecting = `🔵 Đang viết đánh giá AI cho sản phẩm...`;
+      } else if (currentStep === 'review_done') {
+        statusLines.inspecting = `🟢 Đã gửi đánh giá sản phẩm thành công!`;
       }
 
       return [
@@ -1123,7 +1120,10 @@ async function runLocalAiAppScript(
     const script = readFileSync(scriptPath, 'utf8');
     const runScript = new AsyncFunction('page', 'omni', '__params', script);
 
-    await runScript(session.page, session.services, { reporter });
+    await runScript(session.page, session.services, {
+      reporter,
+      openAiApiKey: process.env.OPENAI_API_KEY?.trim()
+    });
     const elapsedMs = Date.now() - scriptStartedAt;
 
     let reportText = `🟢 <b>Kịch bản đã hoàn tất thành công!</b>\nProfile: <b>${profileName}</b> (ID: ${profileId})`;
@@ -1211,7 +1211,7 @@ async function runLocalAiAppScript(
           reportText = [
             `⚠️ <b>QUÁ HẠN NGẠCH LẬP CHỈ MỤC (GOOGLE QUOTA EXCEEDED)</b>`,
             `--------------------------------------------`,
-            `🤖 Kịch bản: <b>Index URL Khai Hoàn Derma</b>`,
+            `🤖 Kịch bản: <b>Đánh giá & Index URL Khai Hoàn Derma</b>`,
             `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
             `⏱️ Đã chạy trong: <b>${totalMin} phút ${totalSec}s</b>`,
             `🟢 Đã gửi yêu cầu index mới: <b>${output.indexedCount} URL</b>`,
@@ -1230,7 +1230,7 @@ async function runLocalAiAppScript(
           reportText = [
             `❌ <b>KỊCH BẢN GẶP LỖI KHI LẬP CHỈ MỤC</b>`,
             `--------------------------------------------`,
-            `🤖 Kịch bản: <b>Index URL Khai Hoàn Derma</b>`,
+            `🤖 Kịch bản: <b>Đánh giá & Index GSC Khai Hoàn Derma</b>`,
             `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
             `⚠️ Lỗi: <code>${escapeHtml(output.errorMessage || 'Lỗi không xác định')}</code>`,
             `⏱️ Đã chạy trong: <b>${totalMin} phút ${totalSec}s</b>`,
@@ -1248,13 +1248,13 @@ async function runLocalAiAppScript(
           reportText = [
             `📊 <b>BÁO CÁO CHI TIẾT: PROFILE ${profileName}</b>`,
             `--------------------------------------------`,
-            `🤖 Kịch bản: <b>Index URL Khai Hoàn Derma</b>`,
+            `🤖 Kịch bản: <b>Đánh giá & Index GSC Khai Hoàn Derma</b>`,
             `👤 Profile: <b>Tên ${profileName}</b> (ID: <b>${profileId}</b>)`,
             `⏱️ Tổng thời gian: <b>${totalMin} phút ${totalSec}s</b>`,
             `🟢 Đã gửi yêu cầu index mới: <b>${output.indexedCount} URL</b>`,
             `🔵 Đã có sẵn trong chỉ mục (bỏ qua): <b>${output.alreadyIndexedCount} URL</b>`,
             `--------------------------------------------`,
-            `🎉 <b>HOÀN THÀNH: Toàn bộ danh sách URL đã được gửi yêu cầu lập chỉ mục thành công!</b>`
+            `🎉 <b>HOÀN THÀNH: Toàn bộ danh sách URL đã được đánh giá và gửi yêu cầu lập chỉ mục thành công!</b>`
           ].join('\n');
         }
 
@@ -1397,14 +1397,12 @@ async function main() {
         }
 
         // Map shortcut buttons to commands
-        if (text === '🚀 Chạy Index GSC (Profile 37)') {
+        if (text === '🚀 Chạy Đánh giá & Index GSC (Profile 37)') {
           text = '/run app=index profile=37';
         } else if (text === '🌱 Chạy Nuôi Profile (Profiles 37-66)') {
           text = '/run app=warmup profiles=37-66';
         } else if (text === '📈 Chạy Rank QA (Profiles 37-66)') {
           text = '/run app=derma profiles=37-66';
-        } else if (text === '✍️ Đánh giá sản phẩm') {
-          text = '/review';
         } else if (text === '📊 Xem trạng thái') {
           text = '/status';
         } else if (text === '🛑 Dừng kịch bản') {
