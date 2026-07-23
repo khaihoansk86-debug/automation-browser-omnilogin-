@@ -1524,6 +1524,66 @@ async function maybeAddToCart(deadline) {
   return false;
 }
 
+async function simulateProductTabInteractions(deadline) {
+  if (remainingMs(deadline) <= 15000) return;
+  try {
+    console.log('[audit] simulating product tab reading (ingredients/usage/reviews)...');
+    
+    // 1. Description/Ingredients tab
+    const descTab = page.locator('#tab-title-description a, li.description_tab a').first();
+    if (await isVisibleSafe(descTab)) {
+      await descTab.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(500);
+      await descTab.click().catch(() => {});
+      console.log('[audit] clicked Description / Ingredients tab');
+      await waitWithinBudget(3000 + Math.floor(Math.random() * 4000), deadline);
+      await safeMouseWheel(0, 180 + Math.floor(Math.random() * 250));
+    }
+
+    if (remainingMs(deadline) <= 10000) return;
+
+    // 2. Reviews tab & reading customer feedback
+    const reviewTab = page.locator('#tab-title-reviews a, li.reviews_tab a').first();
+    if (await isVisibleSafe(reviewTab)) {
+      await reviewTab.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await reviewTab.click().catch(() => {});
+      console.log('[audit] clicked Reviews tab');
+      await waitWithinBudget(2500 + Math.floor(Math.random() * 3500), deadline);
+      await safeMouseWheel(0, 150 + Math.floor(Math.random() * 200));
+    }
+  } catch (err) {
+    console.log('[audit] tab simulation warning:', err.message || String(err));
+  }
+}
+
+async function maybeSimulateInternalSearch(targetDomain, deadline) {
+  if (Math.random() > 0.40 || remainingMs(deadline) <= 30000) return false;
+  
+  const searchKeywords = ['mụn viêm', 'phục hồi da', 'tretinoin', 'kem chống nắng', 'serum', 'kẽm', 'niacinamide'];
+  const query = searchKeywords[Math.floor(Math.random() * searchKeywords.length)];
+
+  try {
+    console.log(`[audit] simulating internal search for: "${query}"`);
+    const searchInput = page.locator('input[type="search"], input.search-field, input[name="s"]').first();
+    if (await isVisibleSafe(searchInput)) {
+      await searchInput.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(500);
+      await searchInput.click().catch(() => {});
+      await wait(300);
+      await searchInput.fill(query).catch(() => {});
+      await wait(800);
+      await searchInput.press('Enter').catch(() => {});
+      await waitWithinBudget(4000 + Math.floor(Math.random() * 3000), deadline);
+      await safeMouseWheel(0, 400 + Math.floor(Math.random() * 300));
+      return true;
+    }
+  } catch (err) {
+    console.log('[audit] internal search simulation warning:', err.message || String(err));
+  }
+  return false;
+}
+
 async function auditTargetSite(config, startUrl) {
   console.log('[step4] audit target site ' + new Date().toISOString());
   reportStep('audit_start');
@@ -1565,6 +1625,8 @@ async function auditTargetSite(config, startUrl) {
 
   await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
   await maybeInspectProductImages('[audit] first product image', deadline);
+  await simulateProductTabInteractions(deadline);
+  await maybeSimulateInternalSearch(config.targetDomain, deadline);
   await scrollToRelatedProducts();
   
   // Try to simulate purchase/add-to-cart on 35% of runs
@@ -1591,6 +1653,7 @@ async function auditTargetSite(config, startUrl) {
     await clickOrGotoInternalLink(cleanLink, deadline);
     await waitWithinBudget(2500 + Math.floor(Math.random() * 2500), deadline);
     await maybeInspectProductImages('[audit] related product image', deadline);
+    await simulateProductTabInteractions(deadline);
     
     // If not already added to cart, try adding to cart on subsequent pages too
     if (!addedToCart && Math.random() < 0.30) {
