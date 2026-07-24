@@ -475,63 +475,109 @@ async function positionSelectedPostContent(activePage, postKey) {
   }
 }
 
-async function expandSeeMoreInPost(activePage, postKey, positionedPost) {
+async function expandSeeMoreInPost(
+  activePage,
+  postKey,
+  positionedPost,
+  targetDomain,
+) {
   try {
-    let post = await reacquireSelectedPost(activePage, postKey) || positionedPost;
-    if (!post) return null;
+    let post = positionedPost;
 
-    const beforeText = (await post.innerText().catch(() => '')).trim();
-    let selected = await findExactSeeMoreControl(post);
-    if (!selected) {
-      console.log('[fb-target] Exact "Xem thêm" control was not found in the selected post.');
-      return null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      post = await reacquireSelectedPost(activePage, postKey) || post;
+      if (!post) return null;
+
+      const alreadyVisibleLink = await findSelectedPostWebsiteLink(
+        activePage,
+        post,
+        targetDomain,
+      );
+      if (alreadyVisibleLink.success) {
+        reportStep('fb_see_more_opened', 'Nội dung bài đã mở và đã thấy link Derma');
+        return { post, linkResult: alreadyVisibleLink };
+      }
+
+      let selected = await findExactSeeMoreControl(post);
+      if (!selected) {
+        console.log(`[fb-target] "Xem thêm" not found on click attempt ${attempt}/3.`);
+        await wait(500);
+        continue;
+      }
+
+      await selected.evaluate((element) => {
+        const desiredTop = 225;
+        const currentTop = element.getBoundingClientRect().top;
+        const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
+        window.scrollTo({ top: destination, behavior: 'smooth' });
+      }).catch(() => {});
+      await wait(800);
+
+      post = await reacquireSelectedPost(activePage, postKey) || post;
+      selected = await findExactSeeMoreControl(post);
+      if (!selected) {
+        const openedLink = await findSelectedPostWebsiteLink(
+          activePage,
+          post,
+          targetDomain,
+        );
+        if (openedLink.success) {
+          reportStep('fb_see_more_opened', 'Đã mở rộng nội dung và thấy link Derma');
+          return { post, linkResult: openedLink };
+        }
+        continue;
+      }
+
+      const seeMoreBox = await selected.boundingBox().catch(() => null);
+      reportStep(
+        'fb_see_more_clicking',
+        `Đã thấy Xem thêm, đang bấm mở nội dung bài (lần ${attempt}/3)`,
+      );
+      await wait(randomInt(250, 450));
+
+      let clicked = false;
+      try {
+        await selected.click({ timeout: 5000 });
+        clicked = true;
+      } catch (clickError) {
+        console.log(
+          `[fb-target] Locator click attempt ${attempt}/3 failed:`,
+          clickError.message || String(clickError),
+        );
+      }
+
+      if (!clicked && seeMoreBox) {
+        await safeMouseMove(
+          seeMoreBox.x + seeMoreBox.width / 2,
+          seeMoreBox.y + seeMoreBox.height / 2,
+          { steps: randomInt(4, 8) },
+        );
+        await page.mouse
+          .click(
+            seeMoreBox.x + seeMoreBox.width / 2,
+            seeMoreBox.y + seeMoreBox.height / 2,
+          )
+          .catch(() => {});
+      }
+
+      await wait(1200);
+      const linkResult = await findSelectedPostWebsiteLink(
+        activePage,
+        post,
+        targetDomain,
+      );
+      if (linkResult.success) {
+        console.log('[fb-target] Expanded "Xem thêm" and found the Derma link.');
+        reportStep('fb_see_more_opened', 'Đã mở rộng nội dung và thấy link Derma');
+        return { post, linkResult };
+      }
+
+      console.log(
+        `[fb-target] Click attempt ${attempt}/3 did not expose a Derma link; retrying.`,
+      );
     }
 
-    await selected.evaluate((element) => {
-      const desiredTop = 225;
-      const currentTop = element.getBoundingClientRect().top;
-      const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
-      window.scrollTo({ top: destination, behavior: 'smooth' });
-    });
-    await wait(900);
-
-    post = await reacquireSelectedPost(activePage, postKey) || post;
-    selected = await findExactSeeMoreControl(post);
-    if (!selected) {
-      console.log('[fb-target] "Xem thêm" disappeared before the click.');
-      return null;
-    }
-
-    const seeMoreBox = await selected.boundingBox().catch(() => null);
-    const seeMoreVisible =
-      Boolean(seeMoreBox) &&
-      seeMoreBox.y >= 100 &&
-      seeMoreBox.y <= 520 &&
-      await selected.isVisible().catch(() => false);
-    if (!seeMoreVisible) {
-      console.log('[fb-target] "Xem thêm" is not inside the visible viewport after positioning.');
-      return null;
-    }
-
-    reportStep('fb_see_more_clicking', 'Đã thấy Xem thêm, đang bấm mở nội dung bài');
-    await wait(randomInt(300, 600));
-    await selected.click();
-    await wait(1500);
-
-    const expandedPost = activePage.locator('[data-omni-fb-selected-post="true"]').first();
-    const afterText = (await expandedPost.innerText().catch(() => '')).trim();
-    const expanded =
-      afterText.length > beforeText.length + 10 ||
-      afterText.includes('Ẩn bớt') ||
-      afterText.includes('See less');
-    if (!expanded) {
-      console.log('[fb-target] "Xem thêm" click did not expand the selected post.');
-      return null;
-    }
-
-    console.log('[fb-target] Expanded "Xem thêm" inside the selected post.');
-    reportStep('fb_see_more_opened', 'Đã mở rộng nội dung bài viết');
-    return expandedPost;
+    return null;
   } catch (err) {
     console.log('[fb-target] expandSeeMoreInPost error:', err.message || String(err));
   }
@@ -609,6 +655,44 @@ async function findPostWebsiteLink(post, targetDomain) {
   } catch (err) {
     console.log('[fb-target] findPostWebsiteLink error:', err.message || String(err));
   }
+  return { success: false };
+}
+
+async function findSelectedPostWebsiteLink(activePage, post, targetDomain) {
+  const scopedResult = await findPostWebsiteLink(post, targetDomain);
+  if (scopedResult.success) return scopedResult;
+
+  const selectedRoot = activePage
+    .locator('[data-omni-fb-selected-post="true"]')
+    .first();
+  if (await isVisibleSafe(selectedRoot)) {
+    const selectedResult = await findPostWebsiteLink(selectedRoot, targetDomain);
+    if (selectedResult.success) return selectedResult;
+  }
+
+  const anchors = await activePage.locator('a[href]').all();
+  for (const anchor of anchors) {
+    if (!(await anchor.isVisible().catch(() => false))) continue;
+    const href = (await anchor.getAttribute('href').catch(() => '')) || '';
+    const text = (await anchor.innerText().catch(() => '')).trim();
+    const destinationUrl = resolveFacebookOutboundUrl(href, targetDomain);
+    const hasDermaLabel = /khaihoanderma|derma/i.test(text);
+    if (!destinationUrl || !hasDermaLabel) continue;
+
+    const box = await anchor.boundingBox().catch(() => null);
+    if (!box || box.x < 500 || box.y < 0 || box.y > 650) continue;
+    const parsedDestination = new URL(destinationUrl);
+    if (parsedDestination.pathname.replace(/\/+$/, '') === '') continue;
+
+    return {
+      success: true,
+      anchor,
+      href,
+      destinationUrl,
+      text: text || destinationUrl,
+    };
+  }
+
   return { success: false };
 }
 
@@ -900,17 +984,18 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   });
   const positionedPost = await positionSelectedPostContent(activePage, selectedPost.key);
 
-  const expandedPost = await expandSeeMoreInPost(
+  const expandedResult = await expandSeeMoreInPost(
     activePage,
     selectedPost.key,
     positionedPost,
+    config.targetDomain,
   );
-  if (!expandedPost) {
+  if (!expandedResult) {
     reportStep('fb_flow_failed', `Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
     throw new Error(`[FB_SEE_MORE_REQUIRED] Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
   }
 
-  const linkResult = await findPostWebsiteLink(expandedPost, config.targetDomain);
+  const linkResult = expandedResult.linkResult;
   if (!linkResult.success) {
     reportStep('fb_flow_failed', `Không thấy link xanh ${config.targetDomain} sau khi bấm Xem thêm`);
     throw new Error(`[FB_DERMA_LINK_REQUIRED] Không thấy link xanh ${config.targetDomain} sau khi bấm Xem thêm`);
