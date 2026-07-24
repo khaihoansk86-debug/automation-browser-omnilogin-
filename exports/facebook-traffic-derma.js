@@ -421,6 +421,29 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
   }
 }
 
+async function positionSelectedPostContent(post) {
+  reportStep('fb_positioning_post', 'Đang cuộn lên phần nội dung của bài được chọn');
+  try {
+    await post.evaluate((element) => {
+      const desiredTop = 155;
+      const currentTop = element.getBoundingClientRect().top;
+      const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
+      window.scrollTo({ top: destination, behavior: 'smooth' });
+    });
+    await wait(1200);
+
+    const postBox = await post.boundingBox().catch(() => null);
+    if (!postBox || postBox.y < 80 || postBox.y > 260) {
+      console.log('[fb-target] Selected post content could not be positioned near the viewport top.');
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.log('[fb-target] positionSelectedPostContent error:', err.message || String(err));
+    return false;
+  }
+}
+
 async function expandSeeMoreInPost(post) {
   try {
     const beforeText = (await post.innerText().catch(() => '')).trim();
@@ -444,27 +467,22 @@ async function expandSeeMoreInPost(post) {
     }
 
     const selected = candidates[0].control;
-    reportStep('fb_positioning_post', 'Đang cuộn lên phần nội dung của bài được chọn');
-    await selected.scrollIntoViewIfNeeded();
-    await wait(400);
+    await selected.evaluate((element) => {
+      const desiredTop = 225;
+      const currentTop = element.getBoundingClientRect().top;
+      const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
+      window.scrollTo({ top: destination, behavior: 'smooth' });
+    });
+    await wait(900);
 
     const seeMoreBox = await selected.boundingBox().catch(() => null);
-    if (seeMoreBox) {
-      const targetY = 220;
-      const adjustment = Math.max(
-        -700,
-        Math.min(700, Math.round(seeMoreBox.y - targetY)),
-      );
-      if (Math.abs(adjustment) > 40) {
-        await safeMouseMove(820, 350, { steps: randomInt(4, 8) });
-        await safeMouseWheel(0, adjustment);
-        await wait(randomInt(500, 800));
-      }
-    }
-
-    await selected.scrollIntoViewIfNeeded();
-    if (!(await selected.isVisible().catch(() => false))) {
-      console.log('[fb-target] "Xem thêm" is still not visible after positioning the post.');
+    const seeMoreVisible =
+      Boolean(seeMoreBox) &&
+      seeMoreBox.y >= 100 &&
+      seeMoreBox.y <= 520 &&
+      await selected.isVisible().catch(() => false);
+    if (!seeMoreVisible) {
+      console.log('[fb-target] "Xem thêm" is not inside the visible viewport after positioning.');
       return false;
     }
 
@@ -852,8 +870,13 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     targetPostIndex,
     maxPosts: maxPostsToInspect,
   });
-  await selectedPost.scrollIntoViewIfNeeded().catch(() => {});
-  await wait(randomInt(700, 1300));
+  const positioned = await positionSelectedPostContent(selectedPost);
+  if (!positioned) {
+    reportStep('fb_flow_failed', `Không cuộn được phần nội dung của bài số ${targetPostIndex} vào màn hình`);
+    throw new Error(
+      `[FB_POST_POSITION_REQUIRED] Không định vị được phần nội dung bài số ${targetPostIndex}`,
+    );
+  }
 
   const expanded = await expandSeeMoreInPost(selectedPost);
   if (!expanded) {
