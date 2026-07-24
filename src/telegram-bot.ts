@@ -1207,7 +1207,10 @@ async function runLocalAiAppScript(
     });
     const elapsedMs = Date.now() - scriptStartedAt;
 
-    let reportText = `🟢 <b>Kịch bản đã hoàn tất thành công!</b>\nProfile: <b>${profileName}</b> (ID: ${profileId})`;
+    const elapsedMinutes = Math.floor(elapsedMs / 60000);
+    const elapsedSeconds = Math.floor((elapsedMs % 60000) / 1000);
+    const timeStr = `${elapsedMinutes} phút ${elapsedSeconds} giây`;
+    let reportText = `🟢 <b>Kịch bản đã hoàn tất thành công!</b>\nProfile: <b>${profileName}</b> (ID: ${profileId})\n⏳ Thời gian chạy: <b>${timeStr}</b>`;
 
     if (app.appId === 'khaihoan-derma-rank-qa') {
       const outPath = 'C:\\Users\\Admin\\Desktop\\key_derma\\khaihoan-derma-rank-qa-output.json';

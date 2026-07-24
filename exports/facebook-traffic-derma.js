@@ -352,11 +352,10 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
           const box = current.getBoundingClientRect();
           const text = (current.innerText || '').trim();
           const isPostCard =
-            box.width >= 420 &&
+            box.width >= 400 &&
             box.width <= 900 &&
-            box.height >= 180 &&
-            /Khải Hoàn Derma/i.test(text) &&
-            text.length >= 100;
+            box.height >= 120 &&
+            text.length >= 60;
 
           if (isPostCard) {
             postRoot = current;
