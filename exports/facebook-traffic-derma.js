@@ -1269,6 +1269,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   let detailTabChecked = false;
   let relatedAttempts = 0;
   let relatedClicked = false;
+  let searchPerformed = false;
 
   while (remainingMs(webDeadline) > 0) {
     const currentUrl = await activePage.url().catch(() => '');
@@ -1302,6 +1303,36 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
         await detailTab.click().catch(() => {});
       }
       detailTabChecked = true;
+    }
+
+    if (
+      !searchPerformed &&
+      elapsedSec >= Math.floor(targetWebSeconds / 2) &&
+      remainingMs(webDeadline) > 10000
+    ) {
+      searchPerformed = true;
+      const searchInput = activePage.locator('input[type="search"], input[name="s"], .search-field').first();
+      if (await isVisibleSafe(searchInput)) {
+        reportStep('web_search', 'Đang tìm kiếm sản phẩm trên web Khải Hoàn Derma');
+        const keywords = ['Chăm sóc da', 'Sữa rửa mặt', 'Toner', 'Serum B5', 'Trị mụn', 'Kem chống nắng', 'Phục hồi da', 'Retinol', 'Cerave', 'Rilastil'];
+        const randomKeyword = keywords[randomInt(0, keywords.length - 1)];
+        await searchInput.click().catch(() => {});
+        await waitWithinBudget(randomInt(500, 1000), webDeadline);
+        
+        try {
+          await activePage.keyboard.type(randomKeyword, { delay: randomInt(60, 150) });
+        } catch (err) {
+          await searchInput.fill(randomKeyword).catch(() => {});
+        }
+        
+        await waitWithinBudget(randomInt(1000, 2000), webDeadline);
+        await searchInput.press('Enter').catch(() => {});
+        await activePage.waitForLoadState('domcontentloaded').catch(() => {});
+        
+        expectedResourceUrl = await activePage.url().catch(() => expectedResourceUrl);
+        await waitWithinBudget(randomInt(2000, 4000), webDeadline);
+        continue;
+      }
     }
 
     if (
