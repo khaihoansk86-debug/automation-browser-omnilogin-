@@ -529,47 +529,73 @@ async function expandSeeMoreInPost(
       }
 
       const seeMoreBox = await selected.boundingBox().catch(() => null);
+      await selected
+        .evaluate((element) => {
+          document
+            .querySelectorAll('[data-omni-fb-see-more-target]')
+            .forEach((item) => item.removeAttribute('data-omni-fb-see-more-target'));
+          element.setAttribute('data-omni-fb-see-more-target', 'true');
+        })
+        .catch(() => {});
       reportStep(
         'fb_see_more_clicking',
         `Đã thấy Xem thêm, đang bấm mở nội dung bài (lần ${attempt}/3)`,
       );
-      await wait(randomInt(250, 450));
 
-      let clicked = false;
-      try {
-        await selected.click({ timeout: 5000 });
-        clicked = true;
-      } catch (clickError) {
-        console.log(
-          `[fb-target] Locator click attempt ${attempt}/3 failed:`,
-          clickError.message || String(clickError),
-        );
-      }
-
-      if (!clicked && seeMoreBox) {
-        await safeMouseMove(
-          seeMoreBox.x + seeMoreBox.width / 2,
-          seeMoreBox.y + seeMoreBox.height / 2,
-          { steps: randomInt(4, 8) },
-        );
+      if (seeMoreBox) {
         await page.mouse
           .click(
             seeMoreBox.x + seeMoreBox.width / 2,
             seeMoreBox.y + seeMoreBox.height / 2,
           )
           .catch(() => {});
+      } else {
+        await selected
+          .evaluate((element) => element.click())
+          .catch(() => {});
       }
 
-      await wait(1200);
-      const linkResult = await findSelectedPostWebsiteLink(
-        activePage,
-        post,
-        targetDomain,
-      );
-      if (linkResult.success) {
-        console.log('[fb-target] Expanded "Xem thêm" and found the Derma link.');
-        reportStep('fb_see_more_opened', 'Đã mở rộng nội dung và thấy link Derma');
-        return { post, linkResult };
+      let linkResult = { success: false };
+      for (let linkAttempt = 1; linkAttempt <= 4; linkAttempt++) {
+        await wait(300);
+        linkResult = await findSelectedPostWebsiteLink(
+          activePage,
+          post,
+          targetDomain,
+        );
+        if (linkResult.success) break;
+      }
+
+      if (!linkResult.success) {
+        const stillCollapsed = await activePage
+          .locator('[data-omni-fb-see-more-target="true"]')
+          .evaluate((element) => {
+            const text = (element.textContent || '').trim();
+            return text === 'Xem thêm' || text === 'See more';
+          })
+          .catch(() => false);
+
+        if (stillCollapsed) {
+          console.log(
+            `[fb-target] Coordinate click did not expand the post on attempt ${attempt}; using DOM click fallback.`,
+          );
+          await activePage
+            .locator('[data-omni-fb-see-more-target="true"]')
+            .evaluate((element) => element.click())
+            .catch(() => {});
+          await wait(350);
+        }
+
+        const linkResult = await findSelectedPostWebsiteLink(
+          activePage,
+          post,
+          targetDomain,
+        );
+        if (linkResult.success) {
+          console.log('[fb-target] Expanded "Xem thêm" and found the Derma link.');
+          reportStep('fb_see_more_opened', 'Đã mở rộng nội dung và thấy link Derma');
+          return { post, linkResult };
+        }
       }
 
       console.log(
@@ -659,41 +685,79 @@ async function findPostWebsiteLink(post, targetDomain) {
 }
 
 async function findSelectedPostWebsiteLink(activePage, post, targetDomain) {
-  const scopedResult = await findPostWebsiteLink(post, targetDomain);
-  if (scopedResult.success) return scopedResult;
+  const result = await activePage.evaluate((domain) => {
+    document
+      .querySelectorAll('[data-omni-fb-derma-link]')
+      .forEach((element) => element.removeAttribute('data-omni-fb-derma-link'));
 
-  const selectedRoot = activePage
-    .locator('[data-omni-fb-selected-post="true"]')
-    .first();
-  if (await isVisibleSafe(selectedRoot)) {
-    const selectedResult = await findPostWebsiteLink(selectedRoot, targetDomain);
-    if (selectedResult.success) return selectedResult;
-  }
-
-  const anchors = await activePage.locator('a[href]').all();
-  for (const anchor of anchors) {
-    if (!(await anchor.isVisible().catch(() => false))) continue;
-    const href = (await anchor.getAttribute('href').catch(() => '')) || '';
-    const text = (await anchor.innerText().catch(() => '')).trim();
-    const destinationUrl = resolveFacebookOutboundUrl(href, targetDomain);
-    const hasDermaLabel = /khaihoanderma|derma/i.test(text);
-    if (!destinationUrl || !hasDermaLabel) continue;
-
-    const box = await anchor.boundingBox().catch(() => null);
-    if (!box || box.x < 500 || box.y < 0 || box.y > 650) continue;
-    const parsedDestination = new URL(destinationUrl);
-    if (parsedDestination.pathname.replace(/\/+$/, '') === '') continue;
-
-    return {
-      success: true,
-      anchor,
-      href,
-      destinationUrl,
-      text: text || destinationUrl,
+    const normalize = (href) => {
+      try {
+        const parsed = new URL(href, 'https://www.facebook.com/');
+        let destination = parsed;
+        if (
+          parsed.hostname === 'l.facebook.com' ||
+          (parsed.hostname.endsWith('.facebook.com') && parsed.pathname === '/l.php')
+        ) {
+          destination = new URL(parsed.searchParams.get('u') || '');
+        }
+        const hostname = destination.hostname.toLowerCase();
+        const allowed = hostname === domain || hostname === `www.${domain}`;
+        if (!allowed || !/^https?:$/.test(destination.protocol)) return '';
+        if (destination.pathname.replace(/\/+$/, '') === '') return '';
+        return destination.href;
+      } catch {
+        return '';
+      }
     };
-  }
 
-  return { success: false };
+    const selectedRoot = document.querySelector('[data-omni-fb-selected-post="true"]');
+    const scopes = selectedRoot ? [selectedRoot, document] : [document];
+    for (const scope of scopes) {
+      for (const anchor of Array.from(scope.querySelectorAll('a[href]'))) {
+        const box = anchor.getBoundingClientRect();
+        const style = getComputedStyle(anchor);
+        const visible =
+          box.width > 0 &&
+          box.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden';
+        if (!visible) continue;
+
+        const href = anchor.getAttribute('href') || '';
+        const text = (anchor.innerText || '').trim();
+        const destinationUrl = normalize(href);
+        if (!destinationUrl || !/khaihoanderma|derma/i.test(text)) continue;
+
+        if (
+          scope === document &&
+          (
+            box.x < window.innerWidth * 0.35 ||
+            box.y < 0 ||
+            box.y > window.innerHeight
+          )
+        ) {
+          continue;
+        }
+
+        anchor.setAttribute('data-omni-fb-derma-link', 'true');
+        return {
+          success: true,
+          href,
+          destinationUrl,
+          text: text || destinationUrl,
+        };
+      }
+    }
+    return { success: false };
+  }, targetDomain);
+
+  if (!result.success) return result;
+  const anchor = activePage.locator('[data-omni-fb-derma-link="true"]').first();
+  if (!(await anchor.isVisible().catch(() => false))) return { success: false };
+  return {
+    ...result,
+    anchor,
+  };
 }
 
 async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
