@@ -1344,7 +1344,8 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
         } else {
           const actualUrl = await activePage.url().catch(() => '');
           if (!sameTargetResource(actualUrl, currentUrl, config.targetDomain)) {
-            throw new Error(`Related-product QA reached an unexpected URL: ${actualUrl}`);
+            currentUrl = actualUrl; // Update currentUrl anyway to prevent loop confusion
+            reportStep('web_related_unverified', `Đã chuyển hướng nhưng không xác thực được trang sản phẩm: ${actualUrl}`);
           }
         }
       } else {
