@@ -982,7 +982,7 @@ async function runLocalAiAppScript(
     statusLines.warmup = '⚪ Mở Facebook News Feed';
     statusLines.search = '⚪ Tìm kiếm Fanpage Khải Hoàn Derma';
     statusLines.rank = '⚪ Kiểm tra tối đa 12 bài & Tìm link Derma';
-    statusLines.audit = '⚪ Kiểm tra nội dung Website trong cùng tab';
+    statusLines.audit = '⚪ Tương tác ở web Derma';
   } else {
     statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
     statusLines.search = '⚪ Tìm kiếm từ khóa Derma';
@@ -1068,33 +1068,39 @@ async function runLocalAiAppScript(
       } else if (currentStep === 'fb_page_opened') {
         statusLines.search = `🟢 Đã vào Fanpage Khải Hoàn Derma`;
       } else if (currentStep === 'fb_target_start') {
-        statusLines.rank = `🔵 Kiểm tra tối đa 12 bài gần nhất & tìm link Derma...`;
+        statusLines.rank = `🔵 Chọn ngẫu nhiên một bài trong 12 bài đầu...`;
+      } else if (currentStep === 'fb_random_position') {
+        statusLines.rank = `🔵 Đã chọn bài số ${detail?.targetPostIndex || 1}/${detail?.maxPosts || 12}`;
       } else if (currentStep === 'fb_post_reading') {
-        statusLines.rank = `🔵 Đang thu thập bài ${detail?.postNum || 1}/${detail?.maxPosts || 12}...`;
-      } else if (currentStep === 'fb_candidate_checking') {
-        statusLines.rank = `🔵 Đang chọn bài có link Derma (${detail?.candidateNum || 1}/${detail?.candidateTotal || 1})...`;
+        statusLines.rank = `🔵 Đang lướt tới bài ${detail?.postNum || 1}/${detail?.maxPosts || 12}...`;
+      } else if (currentStep === 'fb_see_more_clicking') {
+        statusLines.rank = `🔵 Đang bấm Xem thêm trong bài được chọn...`;
+      } else if (currentStep === 'fb_see_more_opened') {
+        statusLines.rank = `🟢 Đã mở rộng nội dung và đang tìm link Derma...`;
       } else if (currentStep === 'fb_link_clicking') {
         statusLines.rank = `🔵 Đang nhấp link sản phẩm Derma trên bài được chọn...`;
       } else if (currentStep === 'fb_link_found') {
         statusLines.rank = `🟢 Đã nhấp đúng link sản phẩm Derma trên bài được chọn`;
-      } else if (currentStep === 'fb_link_not_found') {
-        statusLines.rank = `🟠 Không tìm thấy link Derma trong các bài đã thu thập`;
+      } else if (currentStep === 'fb_flow_failed') {
+        statusLines.rank = `🔴 ${escapeHtml(detail || 'Không mở được link Derma từ bài Facebook')}`;
       } else if (currentStep === 'web_audit_start') {
-        statusLines.audit = `🔵 Đã xác minh domain, đang kiểm tra nội dung Website...`;
+        statusLines.audit = `🔵 Tương tác ở web Derma: đọc nội dung và xem ảnh...`;
       } else if (currentStep === 'web_audit_reading') {
         const elapsed = detail?.elapsed || 0;
         const total = detail?.total || 60;
-        statusLines.audit = `🔵 Đang QA Website khaihoanderma.com (${elapsed}/${total}s)...`;
+        statusLines.audit = `🔵 Đang tương tác ở web Derma (${elapsed}/${total}s)...`;
+      } else if (currentStep === 'web_gallery_checked') {
+        statusLines.audit = `🔵 Đã kiểm tra ảnh, tiếp tục đọc trang sản phẩm...`;
       } else if (currentStep === 'web_related_clicking') {
-        statusLines.audit = `🔵 Đang kiểm tra một sản phẩm tương tự...`;
+        statusLines.audit = `🔵 Đang bấm một sản phẩm tương tự...`;
+      } else if (currentStep === 'web_related_retry') {
+        statusLines.audit = `🔵 ${escapeHtml(detail || 'Đang tìm sản phẩm tương tự...')}`;
       } else if (currentStep === 'web_related_opened') {
         statusLines.audit = `🟢 Đã mở và xác minh sản phẩm tương tự`;
-      } else if (currentStep === 'web_internal_clicking') {
-        statusLines.audit = `🔵 Đang kiểm tra một internal link...`;
-      } else if (currentStep === 'web_internal_opened') {
-        statusLines.audit = `🟢 Đã mở và xác minh internal link`;
+      } else if (currentStep === 'web_flow_failed') {
+        statusLines.audit = `🔴 ${escapeHtml(detail || 'Không mở được sản phẩm tương tự')}`;
       } else if (currentStep === 'web_audit_done') {
-        statusLines.audit = `🟢 Hoàn thành kiểm tra nội dung Website`;
+        statusLines.audit = `🟢 Hoàn thành tương tác ở web Derma`;
       }
 
       return [

@@ -30,15 +30,6 @@ function randomInt(min, max) {
   return low + Math.floor(Math.random() * (high - low + 1));
 }
 
-function shuffled(items) {
-  const copy = [...items];
-  for (let index = copy.length - 1; index > 0; index--) {
-    const swapIndex = randomInt(0, index);
-    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
-  }
-  return copy;
-}
-
 function remainingMs(deadline) {
   return Math.max(0, deadline - Date.now());
 }
@@ -376,36 +367,48 @@ async function getVisiblePost(activePage, seenPostKeys) {
   }
 }
 
-async function findPostByKey(activePage, expectedKey) {
-  const articles = await activePage
-    .locator('div[role="feed"] div[role="article"], div[role="main"] div[role="article"]')
-    .all();
-  for (const article of articles) {
-    if (!(await article.isVisible().catch(() => false))) continue;
-    const identity = await getPostIdentity(article);
-    if (identity.key === expectedKey) return article;
-  }
-  return null;
-}
-
 async function expandSeeMoreInPost(post) {
   try {
+    const beforeText = (await post.innerText().catch(() => '')).trim();
     const controls = await post
-      .locator('div[role="button"], span[role="button"], a[role="button"]')
+      .locator(
+        'div[role="button"], span[role="button"], a[role="button"], ' +
+        'span, a',
+      )
       .all();
+    const candidates = [];
 
     for (const control of controls) {
       if (!(await control.isVisible().catch(() => false))) continue;
       const text = (await control.innerText().catch(() => '')).trim();
-      if (text === 'Xem thêm' || text === 'See more') {
-        await control.scrollIntoViewIfNeeded().catch(() => {});
-        await wait(400);
-        await control.click().catch(() => {});
-        await wait(1200);
-        console.log('[fb-target] Expanded "Xem thêm" inside the selected post.');
-        return true;
-      }
+      if (text === 'Xem thêm' || text === 'See more') candidates.push({ control, text });
     }
+
+    if (candidates.length === 0) {
+      console.log('[fb-target] Exact "Xem thêm" control was not found in the selected post.');
+      return false;
+    }
+
+    const selected = candidates[0].control;
+    reportStep('fb_see_more_clicking', 'Đang bấm Xem thêm trong bài được chọn');
+    await selected.scrollIntoViewIfNeeded();
+    await wait(500);
+    await selected.click();
+    await wait(1500);
+
+    const afterText = (await post.innerText().catch(() => '')).trim();
+    const expanded =
+      afterText.length > beforeText.length + 10 ||
+      afterText.includes('Ẩn bớt') ||
+      afterText.includes('See less');
+    if (!expanded) {
+      console.log('[fb-target] "Xem thêm" click did not expand the selected post.');
+      return false;
+    }
+
+    console.log('[fb-target] Expanded "Xem thêm" inside the selected post.');
+    reportStep('fb_see_more_opened', 'Đã mở rộng nội dung bài viết');
+    return true;
   } catch (err) {
     console.log('[fb-target] expandSeeMoreInPost error:', err.message || String(err));
   }
@@ -603,6 +606,39 @@ async function findInternalLink(activePage, targetDomain, currentUrl, mode, visi
   return candidates[randomInt(0, candidates.length - 1)];
 }
 
+async function inspectProductGallery(activePage) {
+  const selectors = [
+    '.product-thumbnails img',
+    '.woocommerce-product-gallery .flex-control-thumbs img',
+    '.product-gallery .product-thumbnails img',
+  ];
+
+  for (const selector of selectors) {
+    const candidates = await activePage.locator(selector).all();
+    for (const candidate of candidates.slice(0, 6)) {
+      if (!(await candidate.isVisible().catch(() => false))) continue;
+      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      await candidate.click().catch(() => {});
+      reportStep('web_gallery_checked', 'Đã xem ảnh sản phẩm');
+      return true;
+    }
+  }
+
+  const mainImage = activePage
+    .locator(
+      '.woocommerce-product-gallery__image img, .product-gallery img, .product-images img',
+    )
+    .first();
+  if (await isVisibleSafe(mainImage)) {
+    await mainImage.scrollIntoViewIfNeeded().catch(() => {});
+    reportStep('web_gallery_checked', 'Đã xem ảnh chính của sản phẩm');
+    return true;
+  }
+
+  reportStep('web_gallery_checked', 'Trang không có ảnh sản phẩm hiển thị');
+  return false;
+}
+
 async function verifyTargetPage(activePage, expectedUrl, targetDomain, expectedKind) {
   const currentUrl = await activePage.url().catch(() => '');
   if (!sameTargetResource(currentUrl, expectedUrl, targetDomain)) return null;
@@ -670,14 +706,21 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   let activePage = page;
   let clickedLinkInfo = null;
 
-  // Step 3a: collect up to 12 unique recent posts without leaving the Fanpage.
+  // Step 3: choose one random position among the first 12 unique Fanpage posts.
   const maxPostsToInspect = 12;
+  const targetPostIndex = randomInt(1, maxPostsToInspect);
   const seenPostKeys = new Set();
-  const recentPosts = [];
   let inspectedPostCount = 0;
   let scanAttempts = 0;
+  let selectedPost = null;
 
-  while (inspectedPostCount < maxPostsToInspect && scanAttempts < maxPostsToInspect * 3) {
+  console.log(`[fb-target] Random target position: ${targetPostIndex}/${maxPostsToInspect}.`);
+  reportStep('fb_random_position', {
+    targetPostIndex,
+    maxPosts: maxPostsToInspect,
+  });
+
+  while (inspectedPostCount < targetPostIndex && scanAttempts < maxPostsToInspect * 4) {
     if (remainingMs(globalDeadline) <= 60000) break;
     scanAttempts++;
 
@@ -689,82 +732,63 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
 
     seenPostKeys.add(visiblePost.key);
-    recentPosts.push({
-      key: visiblePost.key,
-      permalinkUrl: visiblePost.permalinkUrl,
-    });
     inspectedPostCount++;
-    console.log(`[fb-target] Collected Fanpage post ${inspectedPostCount}/${maxPostsToInspect}.`);
+    console.log(`[fb-target] Reached Fanpage post ${inspectedPostCount}/${targetPostIndex}.`);
     reportStep('fb_post_reading', {
       postNum: inspectedPostCount,
-      maxPosts: maxPostsToInspect,
+      maxPosts: targetPostIndex,
     });
+
+    if (inspectedPostCount === targetPostIndex) {
+      selectedPost = visiblePost.article;
+      break;
+    }
 
     if (Math.random() < 0.65) await moveMouseNaturally();
     await safeMouseWheel(0, randomInt(380, 750));
     await wait(randomInt(2500, 4500));
   }
 
-  // Step 3b: choose randomly among the collected posts and test each candidate
-  // until one exposes a valid Derma product link.
-  const selectablePosts = shuffled(recentPosts.filter((item) => item.permalinkUrl));
-  console.log(`[fb-target] Collected ${recentPosts.length} recent posts; ${selectablePosts.length} have usable permalinks.`);
-
-  for (let candidateIndex = 0; candidateIndex < selectablePosts.length; candidateIndex++) {
-    if (remainingMs(globalDeadline) <= 60000) break;
-    const candidate = selectablePosts[candidateIndex];
-    reportStep('fb_candidate_checking', {
-      candidateNum: candidateIndex + 1,
-      candidateTotal: selectablePosts.length,
-    });
-
-    await activePage.goto(candidate.permalinkUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 35000,
-    }).catch(() => {});
-    await wait(randomInt(1800, 3200));
-
-    const selectedPost = await findPostByKey(activePage, candidate.key);
-    if (!selectedPost) continue;
-
-    await expandSeeMoreInPost(selectedPost);
-    const linkResult = await findPostWebsiteLink(selectedPost, config.targetDomain);
-    if (!linkResult.success) continue;
-
-    clickedLinkInfo = {
-      href: linkResult.href,
-      destinationUrl: linkResult.destinationUrl,
-      text: linkResult.text,
-      sourcePostUrl: candidate.permalinkUrl,
-    };
-    console.log(`[fb-target] Clicking selected product link in the current tab: ${linkResult.destinationUrl}`);
-    reportStep('fb_link_clicking', `Đang nhấp link sản phẩm ${linkResult.destinationUrl}`);
-    const openedUrl = await clickAnchorInCurrentTab(
-      linkResult.anchor,
-      linkResult.destinationUrl,
-      config.targetDomain,
-    ).catch(() => '');
-    targetWebOpened = sameTargetResource(
-      openedUrl,
-      linkResult.destinationUrl,
-      config.targetDomain,
-    );
-    if (targetWebOpened) {
-      reportStep('fb_link_found', `Đã nhấp đúng link sản phẩm ${linkResult.destinationUrl}`);
-      break;
-    }
+  if (!selectedPost) {
+    reportStep('fb_flow_failed', `Không tới được bài ngẫu nhiên số ${targetPostIndex}`);
+    throw new Error(`[FB_POST_NOT_FOUND] Không tới được bài ngẫu nhiên số ${targetPostIndex}/12`);
   }
 
+  const expanded = await expandSeeMoreInPost(selectedPost);
+  if (!expanded) {
+    reportStep('fb_flow_failed', `Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
+    throw new Error(`[FB_SEE_MORE_REQUIRED] Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
+  }
+
+  const linkResult = await findPostWebsiteLink(selectedPost, config.targetDomain);
+  if (!linkResult.success) {
+    reportStep('fb_flow_failed', `Không thấy link xanh ${config.targetDomain} sau khi bấm Xem thêm`);
+    throw new Error(`[FB_DERMA_LINK_REQUIRED] Không thấy link xanh ${config.targetDomain} sau khi bấm Xem thêm`);
+  }
+
+  clickedLinkInfo = {
+    href: linkResult.href,
+    destinationUrl: linkResult.destinationUrl,
+    text: linkResult.text,
+    selectedPostIndex: targetPostIndex,
+  };
+  console.log(`[fb-target] Clicking selected product link in the current tab: ${linkResult.destinationUrl}`);
+  reportStep('fb_link_clicking', `Đang nhấp link sản phẩm ${linkResult.destinationUrl}`);
+  const openedUrl = await clickAnchorInCurrentTab(
+    linkResult.anchor,
+    linkResult.destinationUrl,
+    config.targetDomain,
+  ).catch(() => '');
+  targetWebOpened = sameTargetResource(
+    openedUrl,
+    linkResult.destinationUrl,
+    config.targetDomain,
+  );
   if (!targetWebOpened) {
-    console.log('[fb-target] No valid Derma product link found in the collected recent posts.');
-    reportStep('fb_link_not_found', `Không tìm thấy link sản phẩm ${config.targetDomain} trong ${recentPosts.length} bài gần nhất`);
-    return {
-      targetWebOpened: false,
-      addedToCart: false,
-      visitedPagesCount: 0,
-      clickedLinkInfo: null,
-    };
+    reportStep('fb_flow_failed', `Đã thấy link nhưng không mở được đúng URL ${linkResult.destinationUrl}`);
+    throw new Error(`[FB_REFERRAL_REQUIRED] Không mở được đúng link sản phẩm ${linkResult.destinationUrl}`);
   }
+  reportStep('fb_link_found', `Đã nhấp đúng link sản phẩm ${linkResult.destinationUrl}`);
 
   // Step 4: bounded functional QA on the Derma destination only.
   const qaMinSeconds = Math.max(20, Math.min(config.targetWebMinSeconds, 45));
@@ -789,11 +813,10 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   console.log(`[web-audit] Verified target page and starting ${targetWebSeconds}s bounded QA: ${initialPage.url}`);
   reportStep('web_audit_start', `Đã xác minh trang Derma, bắt đầu kiểm tra cuộn và nội dung (${targetWebSeconds}s)`);
 
+  let galleryChecked = false;
   let detailTabChecked = false;
-  let relatedAttempted = false;
+  let relatedAttempts = 0;
   let relatedClicked = false;
-  let internalAttempted = false;
-  let internalClicked = false;
 
   while (remainingMs(webDeadline) > 0) {
     const currentUrl = await activePage.url().catch(() => '');
@@ -811,6 +834,11 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     const deltaY = (Math.random() < 0.75 ? 1 : -1) * randomInt(260, 620);
     await activePage.mouse.wheel(0, deltaY).catch(() => {});
 
+    if (!galleryChecked && elapsedSec >= Math.floor(targetWebSeconds / 5)) {
+      galleryChecked = true;
+      await inspectProductGallery(activePage);
+    }
+
     if (!detailTabChecked && elapsedSec >= Math.floor(targetWebSeconds / 4)) {
       const detailTab = activePage
         .locator(
@@ -825,11 +853,12 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
 
     if (
-      !relatedAttempted &&
+      !relatedClicked &&
+      relatedAttempts < 3 &&
       elapsedSec >= Math.floor(targetWebSeconds / 3) &&
-      remainingMs(webDeadline) > 10000
+      remainingMs(webDeadline) > 8000
     ) {
-      relatedAttempted = true;
+      relatedAttempts++;
       const relatedLink = await findInternalLink(
         activePage,
         config.targetDomain,
@@ -857,68 +886,42 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
           visitedPages.push(verifiedPage);
           relatedClicked = true;
           reportStep('web_related_opened', `Đã mở sản phẩm tương tự: ${verifiedPage.url}`);
+          await activePage.mouse.wheel(0, randomInt(260, 520)).catch(() => {});
+          await waitWithinBudget(randomInt(2000, 4000), webDeadline);
+          break;
         } else {
           const actualUrl = await activePage.url().catch(() => '');
           if (!sameTargetResource(actualUrl, currentUrl, config.targetDomain)) {
             throw new Error(`Related-product QA reached an unexpected URL: ${actualUrl}`);
           }
         }
-      }
-    }
-
-    if (
-      !internalAttempted &&
-      elapsedSec >= Math.floor((targetWebSeconds * 2) / 3) &&
-      remainingMs(webDeadline) > 7000
-    ) {
-      internalAttempted = true;
-      const internalLink = await findInternalLink(
-        activePage,
-        config.targetDomain,
-        await activePage.url().catch(() => expectedResourceUrl),
-        'internal',
-        visitedPages.map((item) => item.url),
-      );
-      if (internalLink) {
-        reportStep('web_internal_clicking', `Đang kiểm tra internal link: ${internalLink.destinationUrl}`);
-        await internalLink.anchor.scrollIntoViewIfNeeded().catch(() => {});
-        await waitWithinBudget(randomInt(800, 1500), webDeadline);
-        const openedUrl = await clickAnchorInCurrentTab(
-          internalLink.anchor,
-          internalLink.destinationUrl,
-          config.targetDomain,
-        ).catch(() => '');
-        const verifiedPage = await verifyTargetPage(
-          activePage,
-          internalLink.destinationUrl,
-          config.targetDomain,
-          'internal',
+      } else {
+        reportStep(
+          'web_related_retry',
+          `Chưa thấy sản phẩm tương tự, thử lại ${relatedAttempts}/3`,
         );
-        if (openedUrl && verifiedPage) {
-          expectedResourceUrl = internalLink.destinationUrl;
-          visitedPages.push(verifiedPage);
-          internalClicked = true;
-          reportStep('web_internal_opened', `Đã mở internal link: ${verifiedPage.url}`);
-        } else {
-          const actualUrl = await activePage.url().catch(() => '');
-          if (!sameTargetResource(actualUrl, expectedResourceUrl, config.targetDomain)) {
-            throw new Error(`Internal-link QA reached an unexpected URL: ${actualUrl}`);
-          }
-        }
+        await activePage.mouse.wheel(0, randomInt(650, 950)).catch(() => {});
       }
     }
 
     await waitWithinBudget(randomInt(2500, 4500), webDeadline);
   }
 
-  reportStep('web_audit_done', `Hoàn tất ${targetWebSeconds}s kiểm tra nội dung trong domain Derma`);
+  if (!relatedClicked) {
+    reportStep('web_flow_failed', 'Không mở và xác minh được sản phẩm tương tự');
+    throw new Error(
+      '[DERMA_RELATED_REQUIRED] Không tìm thấy hoặc không mở được sản phẩm tương tự',
+    );
+  }
+
+  reportStep('web_audit_done', 'Đã xem nội dung và mở đúng một sản phẩm tương tự');
   return {
     targetWebOpened,
     addedToCart: false,
     visitedPagesCount: visitedPages.length,
     visitedPages,
     relatedClicked,
-    internalClicked,
+    galleryChecked,
     clickedLinkInfo,
     verifiedUrl: initialPage.url,
     pageTitle: initialPage.title,
