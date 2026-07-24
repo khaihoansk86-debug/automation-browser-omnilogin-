@@ -98,7 +98,7 @@ const DEFAULT_APP_ALIASES: AppAlias[] = [
   {
     alias: 'fb',
     appId: 'facebook-traffic-derma',
-    name: 'Bơm Traffic Facebook -> Web Khải Hoàn Derma',
+    name: 'Facebook Referral QA - Khải Hoàn Derma',
   },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
@@ -625,7 +625,7 @@ function welcomeText(omniHost: string) {
     '- Đánh giá & Index GSC (Tự động viết review & gửi index URL)',
     '- Nuôi / Warmup Profiles sạch (Tăng trust Chrome)',
     '- Tương tác SEO Google & Rank QA',
-    '- Bơm Traffic Facebook -> Website Khải Hoàn Derma',
+    '- Facebook Referral QA -> Website Khải Hoàn Derma',
     '',
     '🔗 <b>Về hệ thống:</b>',
     '- Target Site: <code>khaihoanderma.com</code>',
@@ -644,16 +644,15 @@ function helpText(defaultAppId: string) {
     `• ${code('derma')} : Quét thứ hạng Google + Lướt web Khải Hoàn Derma`,
     `• ${code('nuoi')}  : Nuôi tài khoản (đọc báo, xem YouTube, tìm kiếm ngẫu nhiên)`,
     `• ${code('index')} : Tự động Đánh giá & Index GSC các link trong file gửi lên`,
-    `• ${code('fb')}    : Nuôi Facebook 2-3 phút, tìm Fanpage & kích vào link Web Khải Hoàn Derma`,
+    `• ${code('fb')}    : Kiểm tra referral Facebook -> Khải Hoàn Derma trên một profile`,
     '',
     '<b>2. Hướng dẫn chạy 1 profile</b>',
     `• Đánh giá & Index GSC: ${code('/run app=index profile=37')}`,
-    `• Bơm Traffic Facebook: ${code('/run app=fb profile=37')}`,
+    `• Facebook Referral QA: ${code('/run app=fb profile=37')}`,
     `• Chạy Rank QA: ${code('/run app=derma profile=37')}`,
     `• Nuôi tài khoản: ${code('/run app=nuoi profile=1')}`,
     '',
     '<b>3. Hướng dẫn chạy hàng loạt (hỗ trợ dải profile, ví dụ 37-66)</b>',
-    `• Bơm Traffic Facebook dải profile: ${code('/run app=fb profiles=37-66 delay=60-180 close=1')}`,
     `• Chạy Đánh giá & Index GSC dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
     `• Nuôi dải tài khoản: ${code('/run app=nuoi profiles=1-10 delay=60 close=1')}`,
     `• Chạy Rank QA dải: ${code('/run app=derma profiles=37-66 delay=60-180 close=1')}`,
@@ -683,7 +682,7 @@ function listText(aliases: AppAlias[], defaultAppId: string) {
     '',
     '<b>Lệnh hay dùng</b>',
     code('/run app=nuoi profile=1 close=1'),
-    code('/run app=fb profiles=37-66 delay=60 close=1'),
+    code('/run app=fb profile=37 close=1'),
     code('/run app=derma profiles=1,2,3 delay=60 close=1'),
     code('/run app=index profile=37 close=1'),
     code('/run app=index profile=37 close=1'),
@@ -942,7 +941,7 @@ const defaultMenuKeyboard = {
 const defaultInlineKeyboard = {
   inline_keyboard: [
     [
-      { text: '💙 Chạy Facebook Traffic (37-66)', callback_data: '/run app=fb profiles=37-66' }
+      { text: '🔗 Chạy Facebook Referral QA (Profile 37)', callback_data: '/run app=fb profile=37' }
     ],
     [
       { text: '🚀 Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
@@ -982,8 +981,8 @@ async function runLocalAiAppScript(
   } else if (app.appId === 'facebook-traffic-derma') {
     statusLines.warmup = '⚪ Mở Facebook News Feed';
     statusLines.search = '⚪ Tìm kiếm Fanpage Khải Hoàn Derma';
-    statusLines.rank = '⚪ Lướt 1-10 bài đăng & Tìm link Website';
-    statusLines.audit = '⚪ Tương tác Website (Xem ảnh, Tab, Giỏ hàng)';
+    statusLines.rank = '⚪ Kiểm tra tối đa 12 bài & Tìm link Derma';
+    statusLines.audit = '⚪ Kiểm tra nội dung Website trong cùng tab';
   } else {
     statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
     statusLines.search = '⚪ Tìm kiếm từ khóa Derma';
@@ -1069,21 +1068,21 @@ async function runLocalAiAppScript(
       } else if (currentStep === 'fb_page_opened') {
         statusLines.search = `🟢 Đã vào Fanpage Khải Hoàn Derma`;
       } else if (currentStep === 'fb_target_start') {
-        statusLines.rank = `🔵 Lướt 1-10 bài đăng & Tìm link Website...`;
+        statusLines.rank = `🔵 Kiểm tra tối đa 12 bài gần nhất & tìm link Derma...`;
       } else if (currentStep === 'fb_post_reading') {
-        statusLines.rank = `🔵 Lướt bài đăng ${detail?.postNum || 1}/${detail?.maxPosts || 10} & kiểm tra link...`;
+        statusLines.rank = `🔵 Kiểm tra bài ${detail?.postNum || 1}/${detail?.maxPosts || 12}...`;
       } else if (currentStep === 'fb_link_found') {
-        statusLines.rank = `🟢 Đã bấm link trên bài đăng Fanpage sang khaihoanderma.com`;
+        statusLines.rank = `🟢 Đã nhấp link Derma trên bài được chọn`;
+      } else if (currentStep === 'fb_link_not_found') {
+        statusLines.rank = `🟠 Bài được chọn không có link Derma`;
       } else if (currentStep === 'web_audit_start') {
-        statusLines.audit = `🔵 Đang lướt xem bài viết, sản phẩm & giỏ hàng (4 phút)...`;
+        statusLines.audit = `🔵 Đã xác minh domain, đang kiểm tra nội dung Website...`;
       } else if (currentStep === 'web_audit_reading') {
         const elapsed = detail?.elapsed || 0;
-        const total = detail?.total || 240;
-        statusLines.audit = `🔵 Đang lướt Website khaihoanderma.com (${elapsed}/${total}s)...`;
-      } else if (currentStep === 'web_add_to_cart') {
-        statusLines.audit = `🟢 Đã giả lập bỏ sản phẩm vào giỏ hàng!`;
+        const total = detail?.total || 60;
+        statusLines.audit = `🔵 Đang QA Website khaihoanderma.com (${elapsed}/${total}s)...`;
       } else if (currentStep === 'web_audit_done') {
-        statusLines.audit = `🟢 Hoàn thành 4 phút lướt đọc bài & tương tác Website!`;
+        statusLines.audit = `🟢 Hoàn thành kiểm tra nội dung Website`;
       }
 
       return [
@@ -1455,8 +1454,8 @@ async function main() {
         }
 
         // Map shortcut buttons to commands
-        if (text === '💙 Chạy Facebook Traffic (37-66)') {
-          text = '/run app=fb profiles=37-66';
+        if (text === '🔗 Chạy Facebook Referral QA (Profile 37)') {
+          text = '/run app=fb profile=37';
         } else if (text === '🚀 Chạy Đánh giá & Index GSC (Profile 37)') {
           text = '/run app=index profile=37';
         } else if (text === '🌱 Chạy Nuôi Profile (Profiles 37-66)') {
@@ -1767,6 +1766,16 @@ async function main() {
           }
           const resolvedIds = profileResolve.resolved;
           const profilesToRun = profileResolve.profiles.filter((p) => resolvedIds.includes(p.id));
+          if (app.appId === 'facebook-traffic-derma' && profilesToRun.length !== 1) {
+            await telegram.sendMessage(
+              chatId,
+              [
+                '<b>Facebook Referral QA chỉ chạy một profile mỗi lần</b>',
+                `Dùng lệnh: ${code('/run app=fb profile=37 close=1')}`,
+              ].join('\n'),
+            );
+            continue;
+          }
 
           const delayRange = parseDelayRange(args.delay, defaultDelaySeconds);
           const profileRunSeconds =
