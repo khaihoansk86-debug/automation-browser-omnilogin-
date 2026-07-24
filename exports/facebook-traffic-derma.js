@@ -331,26 +331,41 @@ async function getPostIdentity(article) {
 
 async function collectPageArticles(activePage, seenPostKeys, limit) {
   try {
-    const articles = await activePage
-      .locator(
-        'div[role="article"], div[data-pagelet^="FeedUnit_"], ' +
-        'div[data-pagelet*="TimelineFeedUnit"]',
-      )
-      .all();
+    const seeMoreButtons = await activePage.locator('div[role="button"]').all();
     const collected = [];
 
-    for (const article of articles) {
-      if (!(await article.isVisible().catch(() => false))) continue;
-      const box = await article.boundingBox().catch(() => null);
-      if (!box || box.width < 250 || box.height < 120) continue;
+    for (const seeMoreButton of seeMoreButtons) {
+      if (!(await seeMoreButton.isVisible().catch(() => false))) continue;
+      const buttonText = (await seeMoreButton.innerText().catch(() => '')).trim();
+      if (buttonText !== 'Xem thêm' && buttonText !== 'See more') continue;
 
-      const articleText = (await article.innerText().catch(() => '')).trim();
-      const normalizedText = articleText.toLowerCase();
-      const isTargetPagePost =
-        normalizedText.includes('dược mỹ phẩm-khải hoàn derma') ||
-        normalizedText.includes('khải hoàn derma') ||
-        normalizedText.includes('khai hoan derma');
-      if (!isTargetPagePost) continue;
+      const buttonBox = await seeMoreButton.boundingBox().catch(() => null);
+      if (!buttonBox || buttonBox.width > 220 || buttonBox.height > 80) continue;
+
+      let article = seeMoreButton;
+      let articleText = '';
+
+      // Facebook no longer exposes reliable role="article" wrappers on this Page.
+      // Walk upward from the exact content expander until reaching the compact post card.
+      for (let level = 1; level <= 16; level++) {
+        article = article.locator('xpath=..');
+        const box = await article.boundingBox().catch(() => null);
+        if (!box || box.width < 420 || box.width > 900 || box.height < 180) continue;
+
+        const candidateText = (await article.innerText().catch(() => '')).trim();
+        const normalizedText = candidateText.toLowerCase();
+        const isTargetPagePost =
+          normalizedText.includes('dược mỹ phẩm-khải hoàn derma') ||
+          normalizedText.includes('khải hoàn derma') ||
+          normalizedText.includes('khai hoan derma');
+
+        if (isTargetPagePost && candidateText.length >= 100) {
+          articleText = candidateText;
+          break;
+        }
+      }
+
+      if (!articleText) continue;
 
       const { key, permalinkUrl } = await getPostIdentity(article);
       if (!key || seenPostKeys.has(key)) continue;
