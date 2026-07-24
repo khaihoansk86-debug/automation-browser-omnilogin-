@@ -373,7 +373,18 @@ async function findAndClickPostWebsiteLink(activePage, targetDomain) {
   try {
     const linkLocatorInfo = await activePage.evaluate((domain) => {
       const anchors = Array.from(document.querySelectorAll('a[href]'));
-      for (const a of anchors) {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      
+      // Filter for links that are at least partially in the viewport
+      let visibleAnchors = anchors.filter(a => {
+        const r = a.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.top >= -100 && r.bottom <= vh + 100;
+      });
+
+      // Fallback to all anchors if none visible, but always reverse to get the latest post instead of top sidebar
+      const candidates = (visibleAnchors.length > 0 ? visibleAnchors : anchors).reverse();
+
+      for (const a of candidates) {
         const href = a.href || '';
         const rawHref = a.getAttribute('href') || '';
         const text = (a.textContent || '').trim();
