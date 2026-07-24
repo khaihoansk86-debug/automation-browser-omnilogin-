@@ -981,7 +981,7 @@ async function runLocalAiAppScript(
   } else if (app.appId === 'facebook-traffic-derma') {
     statusLines.warmup = '⚪ Mở Facebook News Feed';
     statusLines.search = '⚪ Tìm kiếm Fanpage Khải Hoàn Derma';
-    statusLines.rank = '⚪ Kiểm tra tối đa 12 bài & Tìm link Derma';
+    statusLines.rank = '⚪ Thu thập tối đa 10 bài & Chọn ngẫu nhiên';
     statusLines.audit = '⚪ Tương tác ở web Derma';
   } else {
     statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
@@ -1068,11 +1068,11 @@ async function runLocalAiAppScript(
       } else if (currentStep === 'fb_page_opened') {
         statusLines.search = `🟢 Đã vào Fanpage Khải Hoàn Derma`;
       } else if (currentStep === 'fb_target_start') {
-        statusLines.rank = `🔵 Chọn ngẫu nhiên một bài trong 12 bài đầu...`;
+        statusLines.rank = `🔵 Đang thu thập tối đa 10 bài mới nhất trên Fanpage...`;
       } else if (currentStep === 'fb_random_position') {
-        statusLines.rank = `🔵 Đã chọn bài số ${detail?.targetPostIndex || 1}/${detail?.maxPosts || 12}`;
+        statusLines.rank = `🔵 Đã chọn ngẫu nhiên bài số ${detail?.targetPostIndex || 1}/${detail?.maxPosts || 10}`;
       } else if (currentStep === 'fb_post_reading') {
-        statusLines.rank = `🔵 Đang lướt tới bài ${detail?.postNum || 1}/${detail?.maxPosts || 12}...`;
+        statusLines.rank = `🔵 Đã thu thập ${detail?.postNum || 1}/${detail?.maxPosts || 10} bài mới nhất...`;
       } else if (currentStep === 'fb_see_more_clicking') {
         statusLines.rank = `🔵 Đang bấm Xem thêm trong bài được chọn...`;
       } else if (currentStep === 'fb_see_more_opened') {

@@ -161,57 +161,31 @@ async function warmupFacebookFeed(config, deadline) {
   const warmupDeadline = Date.now() + Math.min(targetDurationMs, remainingMs(deadline));
   const startedAt = Date.now();
 
-  // 1. Thao tác 1: Bắt buộc thử xem Story ở đầu trang
-  await watchFacebookStory(page, warmupDeadline);
-
   let actionCount = 0;
-  let videoWatched = false;
 
   while (remainingMs(warmupDeadline) > 0) {
     const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
     const totalSec = Math.floor(targetDurationMs / 1000);
     reportStep('fb_warmup_reading', { elapsed: elapsedSec, total: totalSec });
 
-    // 2. Thao tác 2: Cuộn mượt qua các bài đăng trên Feed dùng window.scrollBy
-    if (Math.random() < 0.60) await moveMouseNaturally();
+    if (Math.random() < 0.75) await moveMouseNaturally();
 
-    const scrollDistance = randomInt(450, 850);
-    await page.evaluate((dist) => {
-      window.scrollBy({ top: dist, behavior: 'smooth' });
-    }, scrollDistance).catch(() => {});
-
-    await safeMouseWheel(0, randomInt(200, 400));
-    actionCount++;
-    await waitWithinBudget(randomInt(3000, 5500), warmupDeadline);
-
-    // 3. Thao tác 3: Tạm dừng xem Video / Reel khi gặp trên feed
-    if (!videoWatched && Math.random() < 0.40 && remainingMs(warmupDeadline) > 15000) {
-      videoWatched = await watchFacebookVideo(page, warmupDeadline);
-      if (videoWatched) actionCount++;
+    const burstCount = randomInt(2, 4);
+    for (let burst = 0; burst < burstCount && remainingMs(warmupDeadline) > 0; burst++) {
+      await safeMouseWheel(0, randomInt(380, 720));
+      actionCount++;
+      await waitWithinBudget(randomInt(450, 950), warmupDeadline);
     }
 
-    // 4. Thao tác 4: Xem & cuộn qua phần bình luận nếu có
-    if (Math.random() < 0.20 && remainingMs(warmupDeadline) > 12000) {
-      try {
-        const commentBtn = page.locator('div[role="button"]:has-text("Bình luận"), div[role="button"]:has-text("Comment"), span:has-text("bình luận")').first();
-        if (await isVisibleSafe(commentBtn)) {
-          console.log('[fb-warmup] Expanding comments on post...');
-          reportStep('fb_warmup_comment', 'Bấm mở đọc bình luận trên bài đăng...');
-          await commentBtn.scrollIntoViewIfNeeded().catch(() => {});
-          await wait(600);
-          await commentBtn.click().catch(() => {});
-          await waitWithinBudget(randomInt(3000, 5000), warmupDeadline);
-          await page.keyboard.press('Escape').catch(() => {});
-          // Scroll past comment section immediately
-          await page.evaluate(() => window.scrollBy({ top: 600, behavior: 'smooth' })).catch(() => {});
-          await wait(1000);
-          actionCount++;
-        }
-      } catch (e) {}
+    if (Math.random() < 0.18 && remainingMs(warmupDeadline) > 3000) {
+      await safeMouseWheel(0, -randomInt(120, 280));
+      actionCount++;
     }
+
+    await waitWithinBudget(randomInt(900, 2200), warmupDeadline);
   }
 
-  reportStep('fb_warmup_done', 'Đã hoàn thành lướt Facebook Feed 1-2 phút!');
+  reportStep('fb_warmup_done', `Đã lướt Facebook Feed liên tục với ${actionCount} lượt cuộn`);
   return { elapsedMs: Date.now() - startedAt, actionCount };
 }
 
@@ -308,11 +282,14 @@ function normalizeFacebookPermalink(value) {
 
     const storyId = parsed.searchParams.get('story_fbid');
     const ownerId = parsed.searchParams.get('id');
+    const photoId = parsed.searchParams.get('fbid');
     parsed.hash = '';
     parsed.search = '';
     if (storyId) {
       parsed.searchParams.set('story_fbid', storyId);
       if (ownerId) parsed.searchParams.set('id', ownerId);
+    } else if (photoId) {
+      parsed.searchParams.set('fbid', photoId);
     }
     return parsed.href;
   } catch {
@@ -325,7 +302,8 @@ async function getPostIdentity(article) {
   const permalink = article
     .locator(
       'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/videos/"], ' +
-      'a[href*="/reel/"], a[href*="story_fbid="]',
+      'a[href*="/reel/"], a[href*="story_fbid="], a[href*="/photo/?fbid="], ' +
+      'a[href*="/photos/"]',
     )
     .first();
   const permalinkHref = (await permalink.getAttribute('href').catch(() => '')) || '';
@@ -336,13 +314,12 @@ async function getPostIdentity(article) {
   };
 }
 
-async function getVisiblePost(activePage, seenPostKeys) {
+async function collectLoadedPosts(activePage, seenPostKeys, limit) {
   try {
     const articles = await activePage
       .locator('div[role="feed"] div[role="article"], div[role="main"] div[role="article"]')
       .all();
-    let best = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    const collected = [];
 
     for (const article of articles) {
       if (!(await article.isVisible().catch(() => false))) continue;
@@ -350,21 +327,37 @@ async function getVisiblePost(activePage, seenPostKeys) {
       if (!box || box.width < 250 || box.height < 120) continue;
 
       const { key, permalinkUrl } = await getPostIdentity(article);
-      if (!key || seenPostKeys.has(key)) continue;
+      if (!key || !permalinkUrl || seenPostKeys.has(key)) continue;
 
-      const centerY = box.y + box.height / 2;
-      const distance = Math.abs(centerY - 360);
-      if (distance < bestDistance) {
-        best = { article, key, permalinkUrl };
-        bestDistance = distance;
-      }
+      seenPostKeys.add(key);
+      collected.push({ key, permalinkUrl });
+      if (collected.length >= limit) break;
     }
 
-    return best;
+    return collected;
   } catch (err) {
-    console.log('[fb-target] getVisiblePost error:', err.message || String(err));
-    return null;
+    console.log('[fb-target] collectLoadedPosts error:', err.message || String(err));
+    return [];
   }
+}
+
+async function waitForPrimaryPost(activePage, timeoutMs = 20000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const articles = await activePage
+      .locator(
+        'div[role="dialog"] div[role="article"], div[role="main"] div[role="article"], ' +
+        'div[role="feed"] div[role="article"]',
+      )
+      .all();
+    for (const article of articles) {
+      if (!(await article.isVisible().catch(() => false))) continue;
+      const box = await article.boundingBox().catch(() => null);
+      if (box && box.width >= 250 && box.height >= 120) return article;
+    }
+    await wait(500);
+  }
+  return null;
 }
 
 async function expandSeeMoreInPost(post) {
@@ -699,59 +692,70 @@ async function verifyTargetPage(activePage, expectedUrl, targetDomain, expectedK
 // Step 3 & 4: Fanpage Posts Scroll & Target Website Interactions
 // ----------------------------------------------------
 async function auditFanpageAndWebsite(config, globalDeadline) {
-  console.log('[fb-target] Starting Fanpage 12-post referral QA phase...');
-  reportStep('fb_target_start', 'Bắt đầu kiểm tra 12 bài đăng gần nhất trên Fanpage...');
+  console.log('[fb-target] Starting Fanpage 10-post referral QA phase...');
+  reportStep('fb_target_start', 'Đang thu thập tối đa 10 bài mới nhất trên Fanpage...');
 
   let targetWebOpened = false;
   let activePage = page;
   let clickedLinkInfo = null;
 
-  // Step 3: choose one random position among the first 12 unique Fanpage posts.
-  const maxPostsToInspect = 12;
-  const targetPostIndex = randomInt(1, maxPostsToInspect);
+  // Step 3: collect up to 10 recent posts, then reopen one random permalink.
+  const maxPostsToInspect = 10;
   const seenPostKeys = new Set();
-  let inspectedPostCount = 0;
+  const recentPosts = [];
   let scanAttempts = 0;
-  let selectedPost = null;
 
-  console.log(`[fb-target] Random target position: ${targetPostIndex}/${maxPostsToInspect}.`);
-  reportStep('fb_random_position', {
-    targetPostIndex,
-    maxPosts: maxPostsToInspect,
-  });
-
-  while (inspectedPostCount < targetPostIndex && scanAttempts < maxPostsToInspect * 4) {
-    if (remainingMs(globalDeadline) <= 60000) break;
+  while (recentPosts.length < maxPostsToInspect && scanAttempts < maxPostsToInspect * 3) {
+    if (remainingMs(globalDeadline) <= 35000) break;
     scanAttempts++;
 
-    const visiblePost = await getVisiblePost(activePage, seenPostKeys);
-    if (!visiblePost) {
-      await safeMouseWheel(0, randomInt(380, 750));
-      await wait(randomInt(1800, 3200));
-      continue;
+    const loadedPosts = await collectLoadedPosts(
+      activePage,
+      seenPostKeys,
+      maxPostsToInspect - recentPosts.length,
+    );
+    if (loadedPosts.length > 0) {
+      recentPosts.push(...loadedPosts);
+      console.log(
+        `[fb-target] Collected ${recentPosts.length}/${maxPostsToInspect} recent Fanpage posts.`,
+      );
+      reportStep('fb_post_reading', {
+        postNum: recentPosts.length,
+        maxPosts: maxPostsToInspect,
+      });
     }
 
-    seenPostKeys.add(visiblePost.key);
-    inspectedPostCount++;
-    console.log(`[fb-target] Reached Fanpage post ${inspectedPostCount}/${targetPostIndex}.`);
-    reportStep('fb_post_reading', {
-      postNum: inspectedPostCount,
-      maxPosts: targetPostIndex,
-    });
-
-    if (inspectedPostCount === targetPostIndex) {
-      selectedPost = visiblePost.article;
-      break;
-    }
-
+    if (recentPosts.length >= maxPostsToInspect) break;
     if (Math.random() < 0.65) await moveMouseNaturally();
-    await safeMouseWheel(0, randomInt(380, 750));
-    await wait(randomInt(2500, 4500));
+    await safeMouseWheel(0, randomInt(520, 900));
+    await wait(randomInt(1200, 2400));
   }
 
+  if (recentPosts.length === 0) {
+    reportStep('fb_flow_failed', 'Không thu thập được bài Facebook có permalink hợp lệ');
+    throw new Error('[FB_POST_NOT_FOUND] Không thu thập được bài Facebook có permalink hợp lệ');
+  }
+
+  const targetPostIndex = randomInt(1, recentPosts.length);
+  const selectedPostInfo = recentPosts[targetPostIndex - 1];
+  console.log(
+    `[fb-target] Random selected post ${targetPostIndex}/${recentPosts.length}: ${selectedPostInfo.permalinkUrl}`,
+  );
+  reportStep('fb_random_position', {
+    targetPostIndex,
+    maxPosts: recentPosts.length,
+  });
+
+  await activePage.goto(selectedPostInfo.permalinkUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: 35000,
+  });
+  const selectedPost = await waitForPrimaryPost(activePage);
   if (!selectedPost) {
-    reportStep('fb_flow_failed', `Không tới được bài ngẫu nhiên số ${targetPostIndex}`);
-    throw new Error(`[FB_POST_NOT_FOUND] Không tới được bài ngẫu nhiên số ${targetPostIndex}/12`);
+    reportStep('fb_flow_failed', `Không mở lại được bài ngẫu nhiên số ${targetPostIndex}`);
+    throw new Error(
+      `[FB_POST_NOT_FOUND] Không mở lại được bài ngẫu nhiên số ${targetPostIndex}/${recentPosts.length}`,
+    );
   }
 
   const expanded = await expandSeeMoreInPost(selectedPost);
