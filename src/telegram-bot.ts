@@ -941,10 +941,10 @@ const defaultMenuKeyboard = {
 const defaultInlineKeyboard = {
   inline_keyboard: [
     [
-      { text: '🔗 Chạy Facebook Referral QA (37-66)', callback_data: '/run app=fb profiles=37-66 delay=60-90' }
+      { text: '📘 Chạy Facebook Referral QA (37-66)', callback_data: '/run app=fb profiles=37-66 delay=60-90' }
     ],
     [
-      { text: '🚀 Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
+      { text: '⭐ Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
     ],
     [
       { text: '🌱 Chạy Nuôi Profile (37-66)', callback_data: '/run app=warmup profiles=37-66' },
@@ -1478,9 +1478,9 @@ async function main() {
         }
 
         // Map shortcut buttons to commands
-        if (text === '🔗 Chạy Facebook Referral QA (37-66)') {
+        if (text === '📘 Chạy Facebook Referral QA (37-66)') {
           text = '/run app=fb profiles=37-66 delay=60-90';
-        } else if (text === '🚀 Chạy Đánh giá & Index GSC (Profile 37)') {
+        } else if (text === '⭐ Chạy Đánh giá & Index GSC (Profile 37)') {
           text = '/run app=index profile=37';
         } else if (text === '🌱 Chạy Nuôi Profile (Profiles 37-66)') {
           text = '/run app=warmup profiles=37-66';
