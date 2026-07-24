@@ -861,24 +861,21 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                 statusLines.rank = `🔵 Lướt bài đăng ${detail?.postNum || 1}/${detail?.maxPosts || 10} & kiểm tra link...`;
             }
             else if (currentStep === 'fb_link_found') {
-                statusLines.rank = `🟢 ${escapeHtml(detail || 'Tìm thấy link Web & đang bấm chuyển trang!')}`;
-            }
-            else if (currentStep === 'fb_link_fallback') {
-                statusLines.rank = `🟡 Chuyển sang Website Khải Hoàn Derma`;
+                statusLines.rank = `🟢 Đã bấm link trên bài đăng Fanpage sang khaihoanderma.com`;
             }
             else if (currentStep === 'web_audit_start') {
-                statusLines.audit = `🔵 Đang lướt xem sản phẩm, hình ảnh & tương tác Web (7 phút)...`;
+                statusLines.audit = `🔵 Đang lướt xem bài viết, sản phẩm & giỏ hàng (4 phút)...`;
             }
             else if (currentStep === 'web_audit_reading') {
                 const elapsed = detail?.elapsed || 0;
-                const total = detail?.total || 420;
+                const total = detail?.total || 240;
                 statusLines.audit = `🔵 Đang lướt Website khaihoanderma.com (${elapsed}/${total}s)...`;
             }
             else if (currentStep === 'web_add_to_cart') {
                 statusLines.audit = `🟢 Đã giả lập bỏ sản phẩm vào giỏ hàng!`;
             }
             else if (currentStep === 'web_audit_done') {
-                statusLines.audit = `🟢 Hoàn thành 7 phút lướt Facebook & Website!`;
+                statusLines.audit = `🟢 Hoàn thành 4 phút lướt đọc bài & tương tác Website!`;
             }
             return [
                 `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
