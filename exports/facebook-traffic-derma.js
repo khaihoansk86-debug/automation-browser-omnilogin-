@@ -336,35 +336,41 @@ async function getPostIdentity(article) {
 async function collectPageArticles(activePage, seenPostKeys, limit) {
   try {
     const discoveredPosts = await activePage.evaluate(() => {
-      const reactionButtons = Array.from(document.querySelectorAll('div[role="button"]'))
-        .filter((element) => {
-          const text = (element.innerText || '').trim();
-          return text === 'Thích' || text === 'Like';
-        });
+      // 1. Try finding posts via standard accessibility roles
+      let postElements = Array.from(document.querySelectorAll('div[role="article"], div[aria-posinset]'));
+      
+      // 2. Fallback: try finding via reaction buttons if the above fails
+      if (postElements.length === 0) {
+        const reactionButtons = Array.from(document.querySelectorAll('div[role="button"]'))
+          .filter((element) => {
+            const text = (element.innerText || '').trim().toLowerCase();
+            return text === 'thích' || text === 'like' || text === 'react' || text === 'bày tỏ cảm xúc';
+          });
+          
+        for (const btn of reactionButtons) {
+          let current = btn.parentElement;
+          for (let level = 1; current && current !== document.body && level <= 20; level++) {
+            const box = current.getBoundingClientRect();
+            const text = (current.innerText || '').trim();
+            if (box.width >= 300 && box.width <= 1000 && box.height >= 100 && text.length >= 30) {
+              postElements.push(current);
+              break;
+            }
+            current = current.parentElement;
+          }
+        }
+      }
+
       const roots = [];
       const uniqueRoots = new Set();
 
-      for (const reactionButton of reactionButtons) {
-        let current = reactionButton.parentElement;
-        let postRoot = null;
-
-        for (let level = 1; current && current !== document.body && level <= 20; level++) {
-          const box = current.getBoundingClientRect();
-          const text = (current.innerText || '').trim();
-          const isPostCard =
-            box.width >= 400 &&
-            box.width <= 900 &&
-            box.height >= 120 &&
-            text.length >= 60;
-
-          if (isPostCard) {
-            postRoot = current;
-            break;
-          }
-          current = current.parentElement;
-        }
-
+      for (const postRoot of postElements) {
         if (!postRoot || uniqueRoots.has(postRoot)) continue;
+        
+        // Also verify the element is visible and large enough
+        const box = postRoot.getBoundingClientRect();
+        if (box.width < 300 || box.height < 100) continue;
+        
         uniqueRoots.add(postRoot);
 
         const seeMore = Array.from(postRoot.querySelectorAll('div[role="button"]'))
@@ -372,7 +378,10 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
             const text = (element.innerText || '').trim();
             return text === 'Xem thêm' || text === 'See more';
           });
-        if (!seeMore) continue;
+          
+        const hasVisibleLink = postRoot.querySelector('a[href*="khaihoanderma.com"], a[href*="l.facebook.com/l.php?u=https%3A%2F%2Fkhaihoanderma.com"]');
+        
+        if (!seeMore && !hasVisibleLink) continue;
 
         const cleanText = (postRoot.innerText || '')
           .replace(/Facebook/g, ' ')
@@ -558,7 +567,7 @@ async function expandSeeMoreInPost(
       if (seeMoreBox) {
         const jitterX = randomInt(-10, 10);
         const jitterY = randomInt(-4, 4);
-        await page.mouse
+        await activePage.mouse
           .click(
             seeMoreBox.x + seeMoreBox.width / 2 + jitterX,
             seeMoreBox.y + seeMoreBox.height / 2 + jitterY,
