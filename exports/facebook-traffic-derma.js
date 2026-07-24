@@ -259,6 +259,34 @@ async function searchFacebookPage(query, deadline) {
   return true;
 }
 
+async function expandSeeMoreButtons(activePage) {
+  try {
+    const clickedCount = await activePage.evaluate(() => {
+      let count = 0;
+      const elements = Array.from(document.querySelectorAll('div[role="button"], span[dir="auto"], div, span'));
+      for (const el of elements) {
+        const text = (el.textContent || '').trim();
+        if (text === 'Xem thêm' || text === 'See more' || text.endsWith('Xem thêm') || text.endsWith('See more')) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.top > 0) {
+            try {
+              el.click();
+              count++;
+            } catch (e) {}
+          }
+        }
+      }
+      return count;
+    });
+    if (clickedCount > 0) {
+      console.log(`[fb-target] Clicked ${clickedCount} "Xem thêm" button(s) to expand post text!`);
+      await wait(1500);
+    }
+  } catch (err) {
+    console.log('[fb-target] expandSeeMoreButtons error:', err.message || String(err));
+  }
+}
+
 // ----------------------------------------------------
 // Phase 3 & 4: Browse Fanpage & Target Website
 // ----------------------------------------------------
@@ -284,14 +312,8 @@ async function auditFanpageAndWebsite(config, totalTargetDeadline) {
     await safeMouseWheel(0, randomInt(350, 700));
     await waitWithinBudget(randomInt(4000, 9000), totalTargetDeadline);
 
-    // Expand "Xem thêm" (See more) if available
-    try {
-      const seeMoreBtn = activePage.locator('div[role="button"]:has-text("Xem thêm"), div[role="button"]:has-text("See more"), span:has-text("Xem thêm")').first();
-      if (await isVisibleSafe(seeMoreBtn)) {
-        await seeMoreBtn.click().catch(() => {});
-        await wait(1000);
-      }
-    } catch (e) {}
+    // Expand "Xem thêm" (See more) to reveal truncated links inside post text
+    await expandSeeMoreButtons(activePage);
 
     // Check for target website link (khaihoanderma.com)
     try {
@@ -300,9 +322,14 @@ async function auditFanpageAndWebsite(config, totalTargetDeadline) {
         const matches = [];
         for (const a of anchors) {
           const href = a.href || '';
+          const rawHref = a.getAttribute('href') || '';
           const text = (a.textContent || '').trim();
-          if (href.includes(targetDomain) || href.includes('khaihoanderma') || text.includes('khaihoanderma.com')) {
-            matches.push({ href, text, rawHref: a.getAttribute('href') || '' });
+          
+          const isDirect = href.includes(targetDomain) || text.includes(targetDomain);
+          const isFbRedirect = href.includes('l.facebook.com/l.php') && decodeURIComponent(href).includes(targetDomain);
+
+          if (isDirect || isFbRedirect) {
+            matches.push({ href, text, rawHref });
           }
         }
         return matches;
@@ -313,19 +340,27 @@ async function auditFanpageAndWebsite(config, totalTargetDeadline) {
         console.log(`[fb-target] Found target link on post ${pIndex}: "${targetLinkInfo.href}"! Clicking now...`);
         reportStep('fb_link_found', `Tìm thấy link Web: ${targetLinkInfo.text || targetLinkInfo.href}`);
 
-        const pageContext = activePage.context();
+        const pageContext = typeof activePage.context === 'function' ? activePage.context() : page.context();
         const initialPagesCount = pageContext.pages().length;
 
-        const targetAnchor = activePage.locator(`a[href="${targetLinkInfo.rawHref.replace(/"/g, '\\"')}"]`).first();
-        if (await isVisibleSafe(targetAnchor)) {
-          await targetAnchor.scrollIntoViewIfNeeded().catch(() => {});
-          await wait(800);
-          await targetAnchor.click().catch(() => {});
-        } else {
+        let linkClicked = false;
+        try {
+          if (targetLinkInfo.rawHref) {
+            const targetAnchor = activePage.locator(`a[href="${targetLinkInfo.rawHref.replace(/"/g, '\\"')}"]`).first();
+            if (await isVisibleSafe(targetAnchor)) {
+              await targetAnchor.scrollIntoViewIfNeeded().catch(() => {});
+              await wait(800);
+              await targetAnchor.click().catch(() => {});
+              linkClicked = true;
+            }
+          }
+        } catch (e) {}
+
+        if (!linkClicked) {
           await activePage.goto(targetLinkInfo.href, { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => {});
         }
 
-        await wait(3000);
+        await wait(3500);
 
         const newPages = pageContext.pages();
         if (newPages.length > initialPagesCount) {
@@ -334,10 +369,13 @@ async function auditFanpageAndWebsite(config, totalTargetDeadline) {
         }
 
         try {
-          const proceedBtn = activePage.locator('button:has-text("Tiếp tục"), button:has-text("Continue"), a:has-text("Mở liên kết"), div[role="button"]:has-text("Tiếp tục")').first();
-          if (await isVisibleSafe(proceedBtn)) {
-            await proceedBtn.click().catch(() => {});
-            await wait(2000);
+          const currentUrl = await activePage.url().catch(() => '');
+          if (currentUrl.includes('l.facebook.com') || currentUrl.includes('facebook.com')) {
+            const proceedBtn = activePage.locator('button:has-text("Tiếp tục"), button:has-text("Continue"), a:has-text("Mở liên kết"), div[role="button"]:has-text("Tiếp tục"), a[href*="khaihoanderma.com"]').first();
+            if (await isVisibleSafe(proceedBtn)) {
+              await proceedBtn.click().catch(() => {});
+              await wait(3000);
+            }
           }
         } catch (e) {}
 
