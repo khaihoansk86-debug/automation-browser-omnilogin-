@@ -430,12 +430,16 @@ async function positionSelectedPostContent(post) {
       const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
       window.scrollTo({ top: destination, behavior: 'smooth' });
     });
-    await wait(1200);
+    await wait(1400);
 
     const postBox = await post.boundingBox().catch(() => null);
-    if (!postBox || postBox.y < 80 || postBox.y > 260) {
-      console.log('[fb-target] Selected post content could not be positioned near the viewport top.');
-      return false;
+    if (postBox && (postBox.y < 70 || postBox.y > 320)) {
+      const adjustment = Math.max(-700, Math.min(700, Math.round(postBox.y - 155)));
+      if (Math.abs(adjustment) > 40) {
+        await safeMouseMove(820, 350, { steps: randomInt(4, 8) });
+        await safeMouseWheel(0, adjustment);
+        await wait(randomInt(500, 800));
+      }
     }
     return true;
   } catch (err) {
@@ -870,13 +874,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     targetPostIndex,
     maxPosts: maxPostsToInspect,
   });
-  const positioned = await positionSelectedPostContent(selectedPost);
-  if (!positioned) {
-    reportStep('fb_flow_failed', `Không cuộn được phần nội dung của bài số ${targetPostIndex} vào màn hình`);
-    throw new Error(
-      `[FB_POST_POSITION_REQUIRED] Không định vị được phần nội dung bài số ${targetPostIndex}`,
-    );
-  }
+  await positionSelectedPostContent(selectedPost);
 
   const expanded = await expandSeeMoreInPost(selectedPost);
   if (!expanded) {
