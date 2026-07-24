@@ -343,22 +343,19 @@ async function expandSeeMoreButtons(activePage) {
 
 async function findAndClickPostWebsiteLink(activePage, targetDomain) {
   try {
-    const linkResult = await activePage.evaluate((domain) => {
+    const linkLocatorInfo = await activePage.evaluate((domain) => {
       const anchors = Array.from(document.querySelectorAll('a[href]'));
       for (const a of anchors) {
         const href = a.href || '';
         const rawHref = a.getAttribute('href') || '';
         const text = (a.textContent || '').trim();
 
-        const isDirect = href.includes(domain) || text.includes(domain);
-        const isFbRedirect = href.includes('l.facebook.com/l.php') && decodeURIComponent(href).includes(domain);
+        const isDirect = href.includes(domain) || text.includes(domain) || rawHref.includes(domain);
+        const isFbRedirect = href.includes('l.facebook.com/l.php') && (decodeURIComponent(href).includes(domain) || decodeURIComponent(rawHref).includes(domain));
 
         if (isDirect || isFbRedirect) {
+          a.scrollIntoView({ block: 'center', inline: 'center' });
           const rect = a.getBoundingClientRect();
-          try {
-            a.scrollIntoView({ block: 'center', inline: 'center' });
-            a.click();
-          } catch (e) {}
           return {
             success: true,
             href,
@@ -372,14 +369,32 @@ async function findAndClickPostWebsiteLink(activePage, targetDomain) {
       return { success: false };
     }, targetDomain);
 
-    if (linkResult.success) {
-      console.log(`[fb-target] Found and clicked post link in DOM: ${linkResult.href}`);
-      if (linkResult.x > 0 && linkResult.y > 0 && linkResult.y < 1200) {
-        try {
-          await activePage.mouse.click(linkResult.x, linkResult.y).catch(() => {});
-        } catch (e) {}
+    if (linkLocatorInfo.success) {
+      console.log(`[fb-target] Located target link in DOM: ${linkLocatorInfo.href}`);
+
+      const pageContext = typeof activePage.context === 'function' ? activePage.context() : page.context();
+
+      // Listen for new tab popup
+      const newPagePromise = pageContext.waitForEvent('page', { timeout: 12000 }).catch(() => null);
+
+      // Attempt DOM click + mouse click
+      try {
+        await activePage.evaluate((targetHref) => {
+          const a = Array.from(document.querySelectorAll('a[href]')).find(el => el.href === targetHref || el.getAttribute('href') === targetHref);
+          if (a) a.click();
+        }, linkLocatorInfo.href);
+      } catch (e) {}
+
+      if (linkLocatorInfo.x > 0 && linkLocatorInfo.y > 0 && linkLocatorInfo.y < 1200) {
+        await activePage.mouse.click(linkLocatorInfo.x, linkLocatorInfo.y).catch(() => {});
       }
-      return linkResult;
+
+      const newPage = await newPagePromise;
+      return {
+        success: true,
+        newPage,
+        href: linkLocatorInfo.href
+      };
     }
   } catch (err) {
     console.log('[fb-target] findAndClickPostWebsiteLink error:', err.message || String(err));
@@ -410,7 +425,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     // Cuộn xuống từ từ để xem bài đăng tiếp theo
     if (Math.random() < 0.65) await moveMouseNaturally();
     await safeMouseWheel(0, randomInt(380, 750));
-    await wait(randomInt(3000, 6000)); // Dừng lại từ từ 3-6s đọc bài
+    await wait(randomInt(3000, 5000)); // Dừng lại từ từ 3-5s đọc bài
 
     // Bấm nút "Xem thêm" trên bài đăng
     await expandSeeMoreButtons(activePage);
@@ -420,18 +435,25 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
 
     if (clickResult.success) {
       clickedLinkInfo = clickResult;
-      console.log(`[fb-target] Found & clicked post link: ${clickResult.href}`);
+      console.log(`[fb-target] Clicked post website link: ${clickResult.href}`);
       reportStep('fb_link_found', `Đã bấm mở link trên bài đăng Fanpage sang ${config.targetDomain}`);
 
-      await wait(4000);
+      await wait(3000);
 
-      const pageContext = typeof activePage.context === 'function' ? activePage.context() : page.context();
-      const pages = pageContext.pages();
-      const targetTab = pages.find(p => p.url().includes(config.targetDomain)) ||
-                        pages.find(p => p.url().includes('l.facebook.com'));
-
-      if (targetTab) {
-        activePage = targetTab;
+      // Handle new tab page if opened
+      if (clickResult.newPage) {
+        activePage = clickResult.newPage;
+        await activePage.bringToFront().catch(() => {});
+        await activePage.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {});
+      } else {
+        const pageContext = typeof activePage.context === 'function' ? activePage.context() : page.context();
+        const pages = pageContext.pages();
+        const webTab = pages.find(p => p.url().includes(config.targetDomain)) ||
+                       pages.find(p => p.url().includes('l.facebook.com'));
+        if (webTab) {
+          activePage = webTab;
+          await activePage.bringToFront().catch(() => {});
+        }
       }
 
       // Outbound redirect modal handler ("Bạn đang rời khỏi Facebook")
@@ -441,11 +463,28 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
           const proceedBtn = activePage.locator('button:has-text("Tiếp tục"), button:has-text("Continue"), a:has-text("Mở liên kết"), div[role="button"]:has-text("Tiếp tục"), a[href*="khaihoanderma.com"]').first();
           if (await isVisibleSafe(proceedBtn)) {
             console.log('[fb-target] Outbound redirect modal detected! Clicking Continue/Tiếp tục...');
-            await proceedBtn.click().catch(() => {});
+            const [outboundPage] = await Promise.all([
+              activePage.context().waitForEvent('page', { timeout: 10000 }).catch(() => null),
+              proceedBtn.click().catch(() => {}),
+            ]);
+            if (outboundPage) {
+              activePage = outboundPage;
+              await activePage.bringToFront().catch(() => {});
+            }
             await wait(4000);
           }
         }
       } catch (e) {}
+
+      // Ensure activePage is now on the target website or navigate if link was direct
+      const finalUrl = await activePage.url().catch(() => '');
+      console.log('[fb-target] Active page URL after click:', finalUrl);
+
+      if (!finalUrl.includes(config.targetDomain)) {
+        console.log('[fb-target] Page did not redirect automatically, navigating active page directly to target...');
+        const directWebUrl = clickResult.href.includes(config.targetDomain) ? clickResult.href : config.targetBaseUrl;
+        await activePage.goto(directWebUrl, { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => {});
+      }
 
       targetWebOpened = true;
       break;
