@@ -1085,6 +1085,14 @@ async function runLocalAiAppScript(
         const elapsed = detail?.elapsed || 0;
         const total = detail?.total || 60;
         statusLines.audit = `🔵 Đang QA Website khaihoanderma.com (${elapsed}/${total}s)...`;
+      } else if (currentStep === 'web_related_clicking') {
+        statusLines.audit = `🔵 Đang kiểm tra một sản phẩm tương tự...`;
+      } else if (currentStep === 'web_related_opened') {
+        statusLines.audit = `🟢 Đã mở và xác minh sản phẩm tương tự`;
+      } else if (currentStep === 'web_internal_clicking') {
+        statusLines.audit = `🔵 Đang kiểm tra một internal link...`;
+      } else if (currentStep === 'web_internal_opened') {
+        statusLines.audit = `🟢 Đã mở và xác minh internal link`;
       } else if (currentStep === 'web_audit_done') {
         statusLines.audit = `🟢 Hoàn thành kiểm tra nội dung Website`;
       }

@@ -418,7 +418,7 @@ function normalizeTargetUrl(value, targetDomain) {
     const hostname = parsed.hostname.toLowerCase();
     const domain = targetDomain.toLowerCase();
     const allowedProtocol = parsed.protocol === 'https:' || parsed.protocol === 'http:';
-    const allowedHostname = hostname === domain || hostname.endsWith(`.${domain}`);
+    const allowedHostname = hostname === domain || hostname === `www.${domain}`;
     if (allowedProtocol && allowedHostname) return parsed.href;
   } catch {}
   return '';
@@ -486,7 +486,7 @@ async function findPostWebsiteLink(post, targetDomain) {
   return { success: false };
 }
 
-async function clickLinkInCurrentTab(anchor, destinationUrl, targetDomain) {
+async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
   const originalUrl = await page.url().catch(() => '');
   const beforePages = await page.browser.pages();
   const beforeIds = new Set(beforePages.pages.map((item) => item.targetId));
@@ -502,7 +502,7 @@ async function clickLinkInCurrentTab(anchor, destinationUrl, targetDomain) {
   const afterPages = await page.browser.pages().catch(() => ({ pages: [] }));
   const createdPages = afterPages.pages.filter((item) => !beforeIds.has(item.targetId));
   if (createdPages.length > 0) {
-    console.log(`[fb-target] Facebook created ${createdPages.length} extra tab(s); closing only those new tabs.`);
+    console.log(`[one-tab] Click created ${createdPages.length} extra tab(s); closing only those new tabs.`);
     for (const createdPage of createdPages) {
       await page.browser.closePage(createdPage.targetId).catch(() => {});
     }
@@ -523,6 +523,140 @@ async function clickLinkInCurrentTab(anchor, destinationUrl, targetDomain) {
   }
 
   return '';
+}
+
+async function findInternalLink(activePage, targetDomain, currentUrl, mode, visitedUrls) {
+  const selectors = mode === 'related'
+    ? [
+        'section.related a[href]',
+        '.related a[href]',
+        '.related.products a[href]',
+        '[class*="related-product"] a[href]',
+        'section:has-text("SẢN PHẨM TƯƠNG TỰ") a[href]',
+        'section:has-text("Sản phẩm tương tự") a[href]',
+      ]
+    : [
+        'main a[href]',
+        '#main a[href]',
+        '.content-area a[href]',
+        '.page-wrapper a[href]',
+      ];
+  const anchors = await activePage.locator(selectors.join(', ')).all();
+  const candidates = [];
+
+  for (const anchor of anchors) {
+    if (!(await anchor.isVisible().catch(() => false))) continue;
+    const href = (await anchor.getAttribute('href').catch(() => '')) || '';
+    let absoluteHref = '';
+    try {
+      absoluteHref = new URL(href, currentUrl).href;
+    } catch {
+      continue;
+    }
+
+    const destinationUrl = normalizeTargetUrl(absoluteHref, targetDomain);
+    if (!destinationUrl || sameTargetResource(destinationUrl, currentUrl, targetDomain)) continue;
+    if (
+      visitedUrls.some((visitedUrl) =>
+        sameTargetResource(destinationUrl, visitedUrl, targetDomain)
+      )
+    ) {
+      continue;
+    }
+
+    const parsed = new URL(destinationUrl);
+    const path = parsed.pathname.toLowerCase();
+    if (
+      path === '/' ||
+      path.startsWith('/wp-admin') ||
+      path.includes('/cart') ||
+      path.includes('/gio-hang') ||
+      path.includes('/checkout') ||
+      path.includes('/thanh-toan') ||
+      path.includes('/my-account') ||
+      path.includes('/tai-khoan') ||
+      path.includes('/account') ||
+      path.includes('/customer/account') ||
+      path.includes('/login') ||
+      path.includes('/dang-nhap') ||
+      path.includes('/wp-login.php')
+    ) {
+      continue;
+    }
+
+    if (
+      mode === 'related' &&
+      !path.includes('/product/') &&
+      !path.includes('/san-pham/')
+    ) {
+      continue;
+    }
+
+    candidates.push({
+      anchor,
+      destinationUrl,
+      text: (await anchor.innerText().catch(() => '')).trim(),
+    });
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates[randomInt(0, candidates.length - 1)];
+}
+
+async function verifyTargetPage(activePage, expectedUrl, targetDomain, expectedKind) {
+  const currentUrl = await activePage.url().catch(() => '');
+  if (!sameTargetResource(currentUrl, expectedUrl, targetDomain)) return null;
+
+  await activePage.waitForLoadState('domcontentloaded').catch(() => {});
+  const title = (await activePage.title().catch(() => '')).trim();
+  const bodyText = (await activePage.locator('body').innerText().catch(() => '')).trim();
+  const normalizedBody = bodyText.toLowerCase();
+  const errorSignals = [
+    'page not found',
+    'trang không tồn tại',
+    'không tìm thấy trang',
+    'maintenance mode',
+    'đang bảo trì',
+  ];
+  const titleSignalsError = /(^|\s)404(\s|$)/.test(title.toLowerCase());
+  if (
+    !title ||
+    bodyText.length < 80 ||
+    titleSignalsError ||
+    errorSignals.some((signal) => normalizedBody.includes(signal))
+  ) {
+    return null;
+  }
+
+  const heading = (
+    await activePage
+      .locator('h1, .product-title, .entry-title')
+      .first()
+      .innerText()
+      .catch(() => '')
+  ).trim();
+  if (!heading) return null;
+
+  if (expectedKind === 'product') {
+    const productMarker = activePage
+      .locator(
+        '.product-main, .product-info, .product-summary, ' +
+        '[class*="product-detail"], form.cart',
+      )
+      .first();
+    const parsedExpected = new URL(expectedUrl);
+    const productPath =
+      parsedExpected.pathname.includes('/product/') ||
+      parsedExpected.pathname.includes('/san-pham/');
+    if (!productPath || !(await isVisibleSafe(productMarker))) return null;
+  }
+
+  return {
+    url: normalizeTargetUrl(currentUrl, targetDomain),
+    title,
+    heading,
+    bodyLength: bodyText.length,
+  };
 }
 
 // ----------------------------------------------------
@@ -605,7 +739,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     };
     console.log(`[fb-target] Clicking selected product link in the current tab: ${linkResult.destinationUrl}`);
     reportStep('fb_link_clicking', `Đang nhấp link sản phẩm ${linkResult.destinationUrl}`);
-    const openedUrl = await clickLinkInCurrentTab(
+    const openedUrl = await clickAnchorInCurrentTab(
       linkResult.anchor,
       linkResult.destinationUrl,
       config.targetDomain,
@@ -638,31 +772,32 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   const targetWebSeconds = randomInt(qaMinSeconds, qaMaxSeconds);
   const webDeadline = Math.min(Date.now() + targetWebSeconds * 1000, globalDeadline);
   const webStartedAt = Date.now();
-  const currentWebUrl = await activePage.url().catch(() => '');
-  const verifiedWebUrl = normalizeTargetUrl(currentWebUrl, config.targetDomain);
+  if (!clickedLinkInfo) throw new Error('Website QA is missing the clicked Facebook link.');
 
-  if (
-    !verifiedWebUrl ||
-    !clickedLinkInfo ||
-    !sameTargetResource(verifiedWebUrl, clickedLinkInfo.destinationUrl, config.targetDomain)
-  ) {
-    throw new Error(`Website QA refused a non-target URL: ${currentWebUrl}`);
+  let expectedResourceUrl = clickedLinkInfo.destinationUrl;
+  const initialPage = await verifyTargetPage(
+    activePage,
+    expectedResourceUrl,
+    config.targetDomain,
+    'product',
+  );
+  if (!initialPage) {
+    throw new Error(`Website QA refused the clicked product URL: ${await activePage.url().catch(() => '')}`);
   }
 
-  await activePage.waitForLoadState('domcontentloaded').catch(() => {});
-  const pageTitle = (await activePage.title().catch(() => '')).trim();
-  const bodyText = (await activePage.locator('body').innerText().catch(() => '')).trim();
-  if (!pageTitle || bodyText.length < 80) {
-    throw new Error(`Website QA failed content verification: title=${Boolean(pageTitle)}, bodyLength=${bodyText.length}`);
-  }
-
-  console.log(`[web-audit] Verified target page and starting ${targetWebSeconds}s bounded QA: ${verifiedWebUrl}`);
+  const visitedPages = [initialPage];
+  console.log(`[web-audit] Verified target page and starting ${targetWebSeconds}s bounded QA: ${initialPage.url}`);
   reportStep('web_audit_start', `Đã xác minh trang Derma, bắt đầu kiểm tra cuộn và nội dung (${targetWebSeconds}s)`);
 
   let detailTabChecked = false;
+  let relatedAttempted = false;
+  let relatedClicked = false;
+  let internalAttempted = false;
+  let internalClicked = false;
+
   while (remainingMs(webDeadline) > 0) {
     const currentUrl = await activePage.url().catch(() => '');
-    if (!sameTargetResource(currentUrl, clickedLinkInfo.destinationUrl, config.targetDomain)) {
+    if (!sameTargetResource(currentUrl, expectedResourceUrl, config.targetDomain)) {
       throw new Error(`Website QA left the allowed domain: ${currentUrl}`);
     }
 
@@ -676,7 +811,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     const deltaY = (Math.random() < 0.75 ? 1 : -1) * randomInt(260, 620);
     await activePage.mouse.wheel(0, deltaY).catch(() => {});
 
-    if (!detailTabChecked && elapsedSec >= Math.floor(targetWebSeconds / 2)) {
+    if (!detailTabChecked && elapsedSec >= Math.floor(targetWebSeconds / 4)) {
       const detailTab = activePage
         .locator(
           '#tab-title-description a, li.description_tab a, ' +
@@ -689,6 +824,90 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
       detailTabChecked = true;
     }
 
+    if (
+      !relatedAttempted &&
+      elapsedSec >= Math.floor(targetWebSeconds / 3) &&
+      remainingMs(webDeadline) > 10000
+    ) {
+      relatedAttempted = true;
+      const relatedLink = await findInternalLink(
+        activePage,
+        config.targetDomain,
+        currentUrl,
+        'related',
+        visitedPages.map((item) => item.url),
+      );
+      if (relatedLink) {
+        reportStep('web_related_clicking', `Đang kiểm tra sản phẩm tương tự: ${relatedLink.destinationUrl}`);
+        await relatedLink.anchor.scrollIntoViewIfNeeded().catch(() => {});
+        await waitWithinBudget(randomInt(800, 1500), webDeadline);
+        const openedUrl = await clickAnchorInCurrentTab(
+          relatedLink.anchor,
+          relatedLink.destinationUrl,
+          config.targetDomain,
+        ).catch(() => '');
+        const verifiedPage = await verifyTargetPage(
+          activePage,
+          relatedLink.destinationUrl,
+          config.targetDomain,
+          'product',
+        );
+        if (openedUrl && verifiedPage) {
+          expectedResourceUrl = relatedLink.destinationUrl;
+          visitedPages.push(verifiedPage);
+          relatedClicked = true;
+          reportStep('web_related_opened', `Đã mở sản phẩm tương tự: ${verifiedPage.url}`);
+        } else {
+          const actualUrl = await activePage.url().catch(() => '');
+          if (!sameTargetResource(actualUrl, currentUrl, config.targetDomain)) {
+            throw new Error(`Related-product QA reached an unexpected URL: ${actualUrl}`);
+          }
+        }
+      }
+    }
+
+    if (
+      !internalAttempted &&
+      elapsedSec >= Math.floor((targetWebSeconds * 2) / 3) &&
+      remainingMs(webDeadline) > 7000
+    ) {
+      internalAttempted = true;
+      const internalLink = await findInternalLink(
+        activePage,
+        config.targetDomain,
+        await activePage.url().catch(() => expectedResourceUrl),
+        'internal',
+        visitedPages.map((item) => item.url),
+      );
+      if (internalLink) {
+        reportStep('web_internal_clicking', `Đang kiểm tra internal link: ${internalLink.destinationUrl}`);
+        await internalLink.anchor.scrollIntoViewIfNeeded().catch(() => {});
+        await waitWithinBudget(randomInt(800, 1500), webDeadline);
+        const openedUrl = await clickAnchorInCurrentTab(
+          internalLink.anchor,
+          internalLink.destinationUrl,
+          config.targetDomain,
+        ).catch(() => '');
+        const verifiedPage = await verifyTargetPage(
+          activePage,
+          internalLink.destinationUrl,
+          config.targetDomain,
+          'internal',
+        );
+        if (openedUrl && verifiedPage) {
+          expectedResourceUrl = internalLink.destinationUrl;
+          visitedPages.push(verifiedPage);
+          internalClicked = true;
+          reportStep('web_internal_opened', `Đã mở internal link: ${verifiedPage.url}`);
+        } else {
+          const actualUrl = await activePage.url().catch(() => '');
+          if (!sameTargetResource(actualUrl, expectedResourceUrl, config.targetDomain)) {
+            throw new Error(`Internal-link QA reached an unexpected URL: ${actualUrl}`);
+          }
+        }
+      }
+    }
+
     await waitWithinBudget(randomInt(2500, 4500), webDeadline);
   }
 
@@ -696,10 +915,13 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   return {
     targetWebOpened,
     addedToCart: false,
-    visitedPagesCount: 1,
+    visitedPagesCount: visitedPages.length,
+    visitedPages,
+    relatedClicked,
+    internalClicked,
     clickedLinkInfo,
-    verifiedUrl: verifiedWebUrl,
-    pageTitle,
+    verifiedUrl: initialPage.url,
+    pageTitle: initialPage.title,
   };
 }
 
