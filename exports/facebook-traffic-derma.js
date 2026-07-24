@@ -2,8 +2,8 @@ const DEFAULTS = {
   fbSearchQuery: 'Dược mỹ phẩm-Khải Hoàn Derma',
   targetDomain: 'khaihoanderma.com',
   targetBaseUrl: 'https://khaihoanderma.com/',
-  fbWarmupMinSeconds: 120,
-  fbWarmupMaxSeconds: 180,
+  fbWarmupMinSeconds: 60,  // 1 minute
+  fbWarmupMaxSeconds: 120, // 2 minutes
   targetWebMinSeconds: 120, // 2 minutes
   targetWebMaxSeconds: 240, // 4 minutes
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\facebook-traffic-derma-output.json',
@@ -150,7 +150,7 @@ async function watchFacebookVideo(activePage, warmupDeadline) {
 }
 
 // ----------------------------------------------------
-// Phase 1: Facebook Feed Warmup (2 - 3 minutes)
+// Phase 1: Facebook Feed Warmup (Random 1 - 2 minutes)
 // ----------------------------------------------------
 async function warmupFacebookFeed(config, deadline) {
   console.log('[fb-warmup] Navigating to Facebook home...');
@@ -167,30 +167,34 @@ async function warmupFacebookFeed(config, deadline) {
   const warmupDeadline = Date.now() + Math.min(targetDurationMs, remainingMs(deadline));
   const startedAt = Date.now();
 
-  // 1. Try viewing a Story at top of feed
-  await watchFacebookStory(page, warmupDeadline);
+  // 1. Try viewing a Story at top of feed (6-12s)
+  if (Math.random() < 0.70) {
+    await watchFacebookStory(page, warmupDeadline);
+  }
 
-  // 2. Main loop: Mix Feed Scrolling, Video Watching, Comment Expansion
   let actionCount = 0;
   let videoWatched = false;
-  let commentRead = false;
 
   while (remainingMs(warmupDeadline) > 0) {
     const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
     const totalSec = Math.floor(targetDurationMs / 1000);
     reportStep('fb_warmup_reading', { elapsed: elapsedSec, total: totalSec });
 
-    // Try watching video if not watched yet
-    if (!videoWatched && Math.random() < 0.60) {
+    // Always scroll feed down to see next post
+    if (Math.random() < 0.60) await moveMouseNaturally();
+    const deltaY = randomInt(350, 750);
+    await safeMouseWheel(0, deltaY);
+    actionCount++;
+    await waitWithinBudget(randomInt(2500, 5000), warmupDeadline);
+
+    // Random action: Watch Video (30% chance, max 1 time)
+    if (!videoWatched && Math.random() < 0.35 && remainingMs(warmupDeadline) > 20000) {
       videoWatched = await watchFacebookVideo(page, warmupDeadline);
-      if (videoWatched) {
-        actionCount++;
-        continue;
-      }
+      if (videoWatched) actionCount++;
     }
 
-    // Try reading comments if not read yet
-    if (!commentRead && Math.random() < 0.50) {
+    // Random action: Read comment (30% chance)
+    if (Math.random() < 0.30 && remainingMs(warmupDeadline) > 15000) {
       try {
         const commentBtn = page.locator('div[role="button"]:has-text("Bình luận"), div[role="button"]:has-text("Comment"), span:has-text("bình luận")').first();
         if (await isVisibleSafe(commentBtn)) {
@@ -199,25 +203,16 @@ async function warmupFacebookFeed(config, deadline) {
           await commentBtn.scrollIntoViewIfNeeded().catch(() => {});
           await wait(600);
           await commentBtn.click().catch(() => {});
-          await waitWithinBudget(randomInt(4000, 9000), warmupDeadline);
-          await safeMouseWheel(0, 200);
-          commentRead = true;
+          await waitWithinBudget(randomInt(3000, 6000), warmupDeadline);
+          await page.keyboard.press('Escape').catch(() => {}); // Close comment popover if open
+          await wait(1000);
           actionCount++;
-          continue;
         }
       } catch (e) {}
     }
-
-    // Standard Feed Scroll
-    if (Math.random() < 0.60) await moveMouseNaturally();
-    const direction = Math.random() < 0.85 ? 1 : -1;
-    const deltaY = direction * randomInt(250, 650);
-    await safeMouseWheel(0, deltaY);
-    actionCount++;
-    await waitWithinBudget(randomInt(3000, 7000), warmupDeadline);
   }
 
-  reportStep('fb_warmup_done', 'Đã hoàn thành lướt Facebook Feed 2-3 phút!');
+  reportStep('fb_warmup_done', 'Đã hoàn thành lướt Facebook Feed 1-2 phút!');
   return { elapsedMs: Date.now() - startedAt, actionCount };
 }
 

@@ -1061,7 +1061,7 @@ async function runLocalAiAppScript(
         const total = detail?.total || 180;
         statusLines.warmup = `🔵 Đang lướt Facebook Feed (${elapsed}/${total}s)...`;
       } else if (currentStep === 'fb_warmup_done') {
-        statusLines.warmup = `🟢 Đã lướt Facebook Feed 2-3 phút`;
+        statusLines.warmup = `🟢 Đã lướt Facebook Feed 1-2 phút`;
       } else if (currentStep === 'fb_search_start') {
         statusLines.search = `🔵 ${escapeHtml(detail || 'Tìm kiếm Fanpage...')}`;
       } else if (currentStep === 'fb_search_results') {
