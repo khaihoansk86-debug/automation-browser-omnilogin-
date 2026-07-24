@@ -21,6 +21,11 @@ const DEFAULT_APP_ALIASES = [
         appId: 'index-url-khaihoanderma',
         name: 'Đánh giá & Index URL Khai Hoàn Derma',
     },
+    {
+        alias: 'fb',
+        appId: 'facebook-traffic-derma',
+        name: 'Bơm Traffic Facebook -> Web Khải Hoàn Derma',
+    },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
 function loadEnvFile(path = '.env') {
@@ -471,6 +476,7 @@ function welcomeText(omniHost) {
         '- Đánh giá & Index GSC (Tự động viết review & gửi index URL)',
         '- Nuôi / Warmup Profiles sạch (Tăng trust Chrome)',
         '- Tương tác SEO Google & Rank QA',
+        '- Bơm Traffic Facebook -> Website Khải Hoàn Derma',
         '',
         '🔗 <b>Về hệ thống:</b>',
         '- Target Site: <code>khaihoanderma.com</code>',
@@ -488,19 +494,22 @@ function helpText(defaultAppId) {
         `• ${code('derma')} : Quét thứ hạng Google + Lướt web Khải Hoàn Derma`,
         `• ${code('nuoi')}  : Nuôi tài khoản (đọc báo, xem YouTube, tìm kiếm ngẫu nhiên)`,
         `• ${code('index')} : Tự động Đánh giá & Index GSC các link trong file gửi lên`,
+        `• ${code('fb')}    : Nuôi Facebook 2-3 phút, tìm Fanpage & kích vào link Web Khải Hoàn Derma`,
         '',
         '<b>2. Hướng dẫn chạy 1 profile</b>',
         `• Đánh giá & Index GSC: ${code('/run app=index profile=37')}`,
+        `• Bơm Traffic Facebook: ${code('/run app=fb profile=37')}`,
         `• Chạy Rank QA: ${code('/run app=derma profile=37')}`,
         `• Nuôi tài khoản: ${code('/run app=nuoi profile=1')}`,
         '',
         '<b>3. Hướng dẫn chạy hàng loạt (hỗ trợ dải profile, ví dụ 37-66)</b>',
+        `• Bơm Traffic Facebook dải profile: ${code('/run app=fb profiles=37-66 delay=60-180 close=1')}`,
         `• Chạy Đánh giá & Index GSC dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
         `• Nuôi dải tài khoản: ${code('/run app=nuoi profiles=1-10 delay=60 close=1')}`,
         `• Chạy Rank QA dải: ${code('/run app=derma profiles=37-66 delay=60-180 close=1')}`,
         '',
         '<b>4. Giải thích các tham số chính</b>',
-        `• ${code('app=...')} : Tên kịch bản cần chạy (${code('derma')} / ${code('nuoi')} / ${code('index')})`,
+        `• ${code('app=...')} : Tên kịch bản cần chạy (${code('derma')} / ${code('nuoi')} / ${code('index')} / ${code('fb')})`,
         `• ${code('profile=...')} : Tên hoặc ID của 1 profile duy nhất`,
         `• ${code('profiles=...')} : Dải profile (${code('37-66')}, hoặc danh sách ${code('1,2,3')}, hoặc ${code('all')})`,
         `• ${code('delay=...')} : Độ trễ ngẫu nhiên giữa các profile (ví dụ: ${code('60-120')} giây)`,
@@ -523,9 +532,9 @@ function listText(aliases, defaultAppId) {
         '',
         '<b>Lệnh hay dùng</b>',
         code('/run app=nuoi profile=1 close=1'),
-        code('/run app=nuoi profiles=1,2,3 delay=60 close=1'),
-        code('/run app=nuoi profiles=all delay=60 close=1'),
+        code('/run app=fb profiles=37-66 delay=60 close=1'),
         code('/run app=derma profiles=1,2,3 delay=60 close=1'),
+        code('/run app=index profile=37 close=1'),
         code('/run app=index profile=37 close=1'),
         code('/status'),
         code('/stop'),
@@ -714,6 +723,9 @@ const defaultMenuKeyboard = {
 const defaultInlineKeyboard = {
     inline_keyboard: [
         [
+            { text: '💙 Chạy Facebook Traffic (37-66)', callback_data: '/run app=fb profiles=37-66' }
+        ],
+        [
             { text: '🚀 Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
         ],
         [
@@ -740,10 +752,11 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
     if (app.appId === 'profile-warmup-random') {
         statusLines.warmup = '🔵 Đang chạy các tác vụ duyệt web ngẫu nhiên...';
     }
-    else if (app.appId === 'index-url-khaihoanderma') {
-        statusLines.navigating = '⚪ Đang chạy kịch bản Đánh giá & Index...';
-        statusLines.inspecting = '⚪ Đang đánh giá sản phẩm WooCommerce';
-        statusLines.submitting = '⚪ Đang khai báo lập chỉ mục GSC';
+    else if (app.appId === 'facebook-traffic-derma') {
+        statusLines.warmup = '⚪ Mở Facebook News Feed';
+        statusLines.search = '⚪ Tìm kiếm Fanpage Khải Hoàn Derma';
+        statusLines.rank = '⚪ Lướt 1-10 bài đăng & Tìm link Website';
+        statusLines.audit = '⚪ Tương tác Website (Xem ảnh, Tab, Giỏ hàng)';
     }
     else {
         statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
@@ -816,6 +829,64 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                 statusLines.navigating,
                 statusLines.inspecting,
                 statusLines.submitting,
+                `--------------------------------------------`,
+                `<i>Cập nhật liên tục từ trình duyệt...</i>`
+            ].join('\n');
+        }
+        if (app.appId === 'facebook-traffic-derma') {
+            if (currentStep === 'fb_warmup_start') {
+                statusLines.warmup = `🔵 Mở Facebook & lướt tin ngẫu nhiên...`;
+            }
+            else if (currentStep === 'fb_warmup_reading') {
+                const elapsed = detail?.elapsed || 0;
+                const total = detail?.total || 180;
+                statusLines.warmup = `🔵 Đang lướt Facebook Feed (${elapsed}/${total}s)...`;
+            }
+            else if (currentStep === 'fb_warmup_done') {
+                statusLines.warmup = `🟢 Đã lướt Facebook Feed 2-3 phút`;
+            }
+            else if (currentStep === 'fb_search_start') {
+                statusLines.search = `🔵 ${escapeHtml(detail || 'Tìm kiếm Fanpage...')}`;
+            }
+            else if (currentStep === 'fb_search_results') {
+                statusLines.search = `🔵 Đang quét tìm Page: "Dược mỹ phẩm-Khải Hoàn Derma"...`;
+            }
+            else if (currentStep === 'fb_page_opened') {
+                statusLines.search = `🟢 Đã vào Fanpage Khải Hoàn Derma`;
+            }
+            else if (currentStep === 'fb_target_start') {
+                statusLines.rank = `🔵 Lướt 1-10 bài đăng & Tìm link Website...`;
+            }
+            else if (currentStep === 'fb_post_reading') {
+                statusLines.rank = `🔵 Lướt bài đăng ${detail?.postNum || 1}/${detail?.maxPosts || 10} & kiểm tra link...`;
+            }
+            else if (currentStep === 'fb_link_found') {
+                statusLines.rank = `🟢 ${escapeHtml(detail || 'Tìm thấy link Web & đang bấm chuyển trang!')}`;
+            }
+            else if (currentStep === 'fb_link_fallback') {
+                statusLines.rank = `🟡 Chuyển sang Website Khải Hoàn Derma`;
+            }
+            else if (currentStep === 'web_audit_start') {
+                statusLines.audit = `🔵 Đang lướt xem sản phẩm, hình ảnh & tương tác Web (7 phút)...`;
+            }
+            else if (currentStep === 'web_audit_reading') {
+                const elapsed = detail?.elapsed || 0;
+                const total = detail?.total || 420;
+                statusLines.audit = `🔵 Đang lướt Website khaihoanderma.com (${elapsed}/${total}s)...`;
+            }
+            else if (currentStep === 'web_add_to_cart') {
+                statusLines.audit = `🟢 Đã giả lập bỏ sản phẩm vào giỏ hàng!`;
+            }
+            else if (currentStep === 'web_audit_done') {
+                statusLines.audit = `🟢 Hoàn thành 7 phút lướt Facebook & Website!`;
+            }
+            return [
+                `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
+                `--------------------------------------------`,
+                statusLines.warmup,
+                statusLines.search,
+                statusLines.rank,
+                statusLines.audit,
                 `--------------------------------------------`,
                 `<i>Cập nhật liên tục từ trình duyệt...</i>`
             ].join('\n');
@@ -1160,7 +1231,10 @@ async function main() {
                     continue;
                 }
                 // Map shortcut buttons to commands
-                if (text === '🚀 Chạy Đánh giá & Index GSC (Profile 37)') {
+                if (text === '💙 Chạy Facebook Traffic (37-66)') {
+                    text = '/run app=fb profiles=37-66';
+                }
+                else if (text === '🚀 Chạy Đánh giá & Index GSC (Profile 37)') {
                     text = '/run app=index profile=37';
                 }
                 else if (text === '🌱 Chạy Nuôi Profile (Profiles 37-66)') {
