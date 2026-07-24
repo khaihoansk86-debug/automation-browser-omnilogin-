@@ -421,9 +421,34 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
   }
 }
 
-async function positionSelectedPostContent(post) {
+async function reacquireSelectedPost(activePage, postKey) {
+  const currentPosts = await collectPageArticles(activePage, new Set(), 20);
+  const matchedPost = currentPosts.find((item) => item.key === postKey);
+  if (!matchedPost) return null;
+
+  await matchedPost.article
+    .evaluate((element) => {
+      element.setAttribute('data-omni-fb-selected-post', 'true');
+    })
+    .catch(() => {});
+  return matchedPost.article;
+}
+
+async function findExactSeeMoreControl(post) {
+  const controls = await post.locator('div[role="button"]').all();
+  for (const control of controls) {
+    const text = (await control.innerText().catch(() => '')).trim();
+    if (text === 'Xem thêm' || text === 'See more') return control;
+  }
+  return null;
+}
+
+async function positionSelectedPostContent(activePage, postKey) {
   reportStep('fb_positioning_post', 'Đang cuộn lên phần nội dung của bài được chọn');
   try {
+    let post = await reacquireSelectedPost(activePage, postKey);
+    if (!post) return null;
+
     await post.evaluate((element) => {
       const desiredTop = 155;
       const currentTop = element.getBoundingClientRect().top;
@@ -441,36 +466,27 @@ async function positionSelectedPostContent(post) {
         await wait(randomInt(500, 800));
       }
     }
-    return true;
+
+    post = await reacquireSelectedPost(activePage, postKey);
+    return post;
   } catch (err) {
     console.log('[fb-target] positionSelectedPostContent error:', err.message || String(err));
-    return false;
+    return null;
   }
 }
 
-async function expandSeeMoreInPost(post) {
+async function expandSeeMoreInPost(activePage, postKey, positionedPost) {
   try {
+    let post = await reacquireSelectedPost(activePage, postKey) || positionedPost;
+    if (!post) return null;
+
     const beforeText = (await post.innerText().catch(() => '')).trim();
-    const controls = await post
-      .locator(
-        'div[role="button"], span[role="button"], a[role="button"], ' +
-        'span, a',
-      )
-      .all();
-    const candidates = [];
-
-    for (const control of controls) {
-      if (!(await control.isVisible().catch(() => false))) continue;
-      const text = (await control.innerText().catch(() => '')).trim();
-      if (text === 'Xem thêm' || text === 'See more') candidates.push({ control, text });
-    }
-
-    if (candidates.length === 0) {
+    let selected = await findExactSeeMoreControl(post);
+    if (!selected) {
       console.log('[fb-target] Exact "Xem thêm" control was not found in the selected post.');
-      return false;
+      return null;
     }
 
-    const selected = candidates[0].control;
     await selected.evaluate((element) => {
       const desiredTop = 225;
       const currentTop = element.getBoundingClientRect().top;
@@ -478,6 +494,13 @@ async function expandSeeMoreInPost(post) {
       window.scrollTo({ top: destination, behavior: 'smooth' });
     });
     await wait(900);
+
+    post = await reacquireSelectedPost(activePage, postKey) || post;
+    selected = await findExactSeeMoreControl(post);
+    if (!selected) {
+      console.log('[fb-target] "Xem thêm" disappeared before the click.');
+      return null;
+    }
 
     const seeMoreBox = await selected.boundingBox().catch(() => null);
     const seeMoreVisible =
@@ -487,7 +510,7 @@ async function expandSeeMoreInPost(post) {
       await selected.isVisible().catch(() => false);
     if (!seeMoreVisible) {
       console.log('[fb-target] "Xem thêm" is not inside the visible viewport after positioning.');
-      return false;
+      return null;
     }
 
     reportStep('fb_see_more_clicking', 'Đã thấy Xem thêm, đang bấm mở nội dung bài');
@@ -495,23 +518,24 @@ async function expandSeeMoreInPost(post) {
     await selected.click();
     await wait(1500);
 
-    const afterText = (await post.innerText().catch(() => '')).trim();
+    const expandedPost = activePage.locator('[data-omni-fb-selected-post="true"]').first();
+    const afterText = (await expandedPost.innerText().catch(() => '')).trim();
     const expanded =
       afterText.length > beforeText.length + 10 ||
       afterText.includes('Ẩn bớt') ||
       afterText.includes('See less');
     if (!expanded) {
       console.log('[fb-target] "Xem thêm" click did not expand the selected post.');
-      return false;
+      return null;
     }
 
     console.log('[fb-target] Expanded "Xem thêm" inside the selected post.');
     reportStep('fb_see_more_opened', 'Đã mở rộng nội dung bài viết');
-    return true;
+    return expandedPost;
   } catch (err) {
     console.log('[fb-target] expandSeeMoreInPost error:', err.message || String(err));
   }
-  return false;
+  return null;
 }
 
 function normalizeTargetUrl(value, targetDomain) {
@@ -847,7 +871,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
         });
 
         if (currentPostIndex === targetPostIndex) {
-          selectedPost = loadedPost.article;
+          selectedPost = loadedPost;
           break;
         }
       }
@@ -874,15 +898,19 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     targetPostIndex,
     maxPosts: maxPostsToInspect,
   });
-  await positionSelectedPostContent(selectedPost);
+  const positionedPost = await positionSelectedPostContent(activePage, selectedPost.key);
 
-  const expanded = await expandSeeMoreInPost(selectedPost);
-  if (!expanded) {
+  const expandedPost = await expandSeeMoreInPost(
+    activePage,
+    selectedPost.key,
+    positionedPost,
+  );
+  if (!expandedPost) {
     reportStep('fb_flow_failed', `Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
     throw new Error(`[FB_SEE_MORE_REQUIRED] Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
   }
 
-  const linkResult = await findPostWebsiteLink(selectedPost, config.targetDomain);
+  const linkResult = await findPostWebsiteLink(expandedPost, config.targetDomain);
   if (!linkResult.success) {
     reportStep('fb_flow_failed', `Không thấy link xanh ${config.targetDomain} sau khi bấm Xem thêm`);
     throw new Error(`[FB_DERMA_LINK_REQUIRED] Không thấy link xanh ${config.targetDomain} sau khi bấm Xem thêm`);
