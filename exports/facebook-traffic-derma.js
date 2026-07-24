@@ -444,9 +444,32 @@ async function expandSeeMoreInPost(post) {
     }
 
     const selected = candidates[0].control;
-    reportStep('fb_see_more_clicking', 'Đang bấm Xem thêm trong bài được chọn');
+    reportStep('fb_positioning_post', 'Đang cuộn lên phần nội dung của bài được chọn');
     await selected.scrollIntoViewIfNeeded();
-    await wait(500);
+    await wait(400);
+
+    const seeMoreBox = await selected.boundingBox().catch(() => null);
+    if (seeMoreBox) {
+      const targetY = 220;
+      const adjustment = Math.max(
+        -700,
+        Math.min(700, Math.round(seeMoreBox.y - targetY)),
+      );
+      if (Math.abs(adjustment) > 40) {
+        await safeMouseMove(820, 350, { steps: randomInt(4, 8) });
+        await safeMouseWheel(0, adjustment);
+        await wait(randomInt(500, 800));
+      }
+    }
+
+    await selected.scrollIntoViewIfNeeded();
+    if (!(await selected.isVisible().catch(() => false))) {
+      console.log('[fb-target] "Xem thêm" is still not visible after positioning the post.');
+      return false;
+    }
+
+    reportStep('fb_see_more_clicking', 'Đã thấy Xem thêm, đang bấm mở nội dung bài');
+    await wait(randomInt(300, 600));
     await selected.click();
     await wait(1500);
 

@@ -1077,8 +1077,10 @@ async function runLocalAiAppScript(
           `(mục tiêu ${detail?.target || 1}/${detail?.maxPosts || 10})`;
       } else if (currentStep === 'fb_target_reached') {
         statusLines.rank = `🟢 Đã tới đúng bài số ${detail?.targetPostIndex || 1}/${detail?.maxPosts || 10}`;
+      } else if (currentStep === 'fb_positioning_post') {
+        statusLines.rank = `🔵 Đang cuộn lên phần nội dung để tìm nút Xem thêm...`;
       } else if (currentStep === 'fb_see_more_clicking') {
-        statusLines.rank = `🔵 Đang bấm Xem thêm trong bài được chọn...`;
+        statusLines.rank = `🔵 Đã thấy Xem thêm, đang bấm mở nội dung bài...`;
       } else if (currentStep === 'fb_see_more_opened') {
         statusLines.rank = `🟢 Đã mở rộng nội dung và đang tìm link Derma...`;
       } else if (currentStep === 'fb_link_clicking') {
