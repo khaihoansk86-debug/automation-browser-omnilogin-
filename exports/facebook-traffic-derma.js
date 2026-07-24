@@ -87,6 +87,69 @@ async function waitWithinBudget(ms, deadline) {
 }
 
 // ----------------------------------------------------
+async function watchFacebookStory(activePage, warmupDeadline) {
+  try {
+    const storyClicked = await activePage.evaluate(() => {
+      const storyCards = Array.from(document.querySelectorAll('a[href*="/stories/"], div[role="button"][aria-label*="story"], div[role="button"][aria-label*="Story"], div[role="button"][aria-label*="tin"], div[role="button"][aria-label*="Tin"]'));
+      for (const card of storyCards) {
+        const text = (card.textContent || '').trim();
+        if (!text.includes('Tạo tin') && !text.includes('Create story') && !text.includes('Tạo Story')) {
+          const rect = card.getBoundingClientRect();
+          if (rect.width > 20 && rect.height > 20 && rect.top < 350) {
+            try {
+              card.click();
+              return true;
+            } catch (e) {}
+          }
+        }
+      }
+      return false;
+    });
+
+    if (storyClicked) {
+      console.log('[fb-warmup] Successfully opened Facebook Story! Watching 6-12 seconds...');
+      reportStep('fb_warmup_story', 'Đang xem Story ngẫu nhiên trên Facebook...');
+      await waitWithinBudget(randomInt(6000, 12000), warmupDeadline);
+      await activePage.keyboard.press('Escape').catch(() => {});
+      await wait(1500);
+      return true;
+    }
+  } catch (err) {
+    console.log('[fb-warmup] watchFacebookStory error:', err.message || String(err));
+  }
+  return false;
+}
+
+async function watchFacebookVideo(activePage, warmupDeadline) {
+  try {
+    const videoClicked = await activePage.evaluate(() => {
+      const videoEls = Array.from(document.querySelectorAll('video, a[href*="/watch/"], a[href*="/reel/"]'));
+      for (const v of videoEls) {
+        const rect = v.getBoundingClientRect();
+        if (rect.width > 80 && rect.height > 80 && rect.top > 0 && rect.top < window.innerHeight) {
+          try {
+            v.scrollIntoView({ block: 'center' });
+            v.click();
+            return true;
+          } catch (e) {}
+        }
+      }
+      return false;
+    });
+
+    if (videoClicked) {
+      console.log('[fb-warmup] Successfully focused on Video/Reel! Watching 10-20 seconds...');
+      reportStep('fb_warmup_video', 'Đang tạm dừng xem Video/Reel ngẫu nhiên...');
+      await waitWithinBudget(randomInt(10000, 20000), warmupDeadline);
+      return true;
+    }
+  } catch (err) {
+    console.log('[fb-warmup] watchFacebookVideo error:', err.message || String(err));
+  }
+  return false;
+}
+
+// ----------------------------------------------------
 // Phase 1: Facebook Feed Warmup (2 - 3 minutes)
 // ----------------------------------------------------
 async function warmupFacebookFeed(config, deadline) {
@@ -104,72 +167,54 @@ async function warmupFacebookFeed(config, deadline) {
   const warmupDeadline = Date.now() + Math.min(targetDurationMs, remainingMs(deadline));
   const startedAt = Date.now();
 
+  // 1. Try viewing a Story at top of feed
+  await watchFacebookStory(page, warmupDeadline);
+
+  // 2. Main loop: Mix Feed Scrolling, Video Watching, Comment Expansion
   let actionCount = 0;
+  let videoWatched = false;
+  let commentRead = false;
 
   while (remainingMs(warmupDeadline) > 0) {
     const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
     const totalSec = Math.floor(targetDurationMs / 1000);
     reportStep('fb_warmup_reading', { elapsed: elapsedSec, total: totalSec });
 
-    const rand = Math.random();
+    // Try watching video if not watched yet
+    if (!videoWatched && Math.random() < 0.60) {
+      videoWatched = await watchFacebookVideo(page, warmupDeadline);
+      if (videoWatched) {
+        actionCount++;
+        continue;
+      }
+    }
 
-    // Action A: Scroll Feed & Read (50%)
-    if (rand < 0.50) {
-      if (Math.random() < 0.60) await moveMouseNaturally();
-      const direction = Math.random() < 0.85 ? 1 : -1;
-      const deltaY = direction * randomInt(250, 650);
-      await safeMouseWheel(0, deltaY);
-      actionCount++;
-      await waitWithinBudget(randomInt(3000, 8000), warmupDeadline);
-    }
-    // Action B: View Story (15%)
-    else if (rand < 0.65) {
-      console.log('[fb-warmup] Attempting to view a Facebook story...');
-      try {
-        const storyCard = page.locator('div[role="button"]:has-text("Tạo tin"), div[aria-label*="Story"], div[aria-label*="Tin"], a[href*="/stories/"]').first();
-        if (await isVisibleSafe(storyCard)) {
-          await storyCard.click().catch(() => {});
-          await waitWithinBudget(randomInt(5000, 10000), warmupDeadline);
-          await page.keyboard.press('Escape').catch(() => {});
-          await wait(1500);
-          actionCount++;
-        }
-      } catch (err) {
-        console.log('[fb-warmup] story click error:', err.message || String(err));
-      }
-    }
-    // Action C: Watch Reel / Video (20%)
-    else if (rand < 0.85) {
-      console.log('[fb-warmup] Pausing over video/reel content...');
-      try {
-        const videoEl = page.locator('video, a[href*="/watch/"], a[href*="/reel/"]').first();
-        if (await isVisibleSafe(videoEl)) {
-          await videoEl.scrollIntoViewIfNeeded().catch(() => {});
-          await moveMouseNaturally();
-          await waitWithinBudget(randomInt(8000, 18000), warmupDeadline);
-          actionCount++;
-        }
-      } catch (err) {
-        console.log('[fb-warmup] video pause error:', err.message || String(err));
-      }
-    }
-    // Action D: Read Comments (15%)
-    else {
-      console.log('[fb-warmup] Expanding comments on post...');
+    // Try reading comments if not read yet
+    if (!commentRead && Math.random() < 0.50) {
       try {
         const commentBtn = page.locator('div[role="button"]:has-text("Bình luận"), div[role="button"]:has-text("Comment"), span:has-text("bình luận")').first();
         if (await isVisibleSafe(commentBtn)) {
+          console.log('[fb-warmup] Expanding comments on post...');
+          reportStep('fb_warmup_comment', 'Bấm mở đọc bình luận trên bài đăng...');
           await commentBtn.scrollIntoViewIfNeeded().catch(() => {});
           await wait(600);
           await commentBtn.click().catch(() => {});
           await waitWithinBudget(randomInt(4000, 9000), warmupDeadline);
           await safeMouseWheel(0, 200);
+          commentRead = true;
           actionCount++;
+          continue;
         }
-      } catch (err) {
-        console.log('[fb-warmup] comment expand error:', err.message || String(err));
-      }
+      } catch (e) {}
     }
+
+    // Standard Feed Scroll
+    if (Math.random() < 0.60) await moveMouseNaturally();
+    const direction = Math.random() < 0.85 ? 1 : -1;
+    const deltaY = direction * randomInt(250, 650);
+    await safeMouseWheel(0, deltaY);
+    actionCount++;
+    await waitWithinBudget(randomInt(3000, 7000), warmupDeadline);
   }
 
   reportStep('fb_warmup_done', 'Đã hoàn thành lướt Facebook Feed 2-3 phút!');
