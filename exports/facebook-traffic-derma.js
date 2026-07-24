@@ -170,11 +170,11 @@ async function warmupFacebookFeed(config, deadline) {
 
     if (Math.random() < 0.75) await moveMouseNaturally();
 
-    const burstCount = randomInt(2, 4);
+    const burstCount = randomInt(2, 3);
     for (let burst = 0; burst < burstCount && remainingMs(warmupDeadline) > 0; burst++) {
-      await safeMouseWheel(0, randomInt(380, 720));
+      await safeMouseWheel(0, randomInt(250, 500));
       actionCount++;
-      await waitWithinBudget(randomInt(450, 950), warmupDeadline);
+      await waitWithinBudget(randomInt(900, 1600), warmupDeadline);
     }
 
     if (Math.random() < 0.18 && remainingMs(warmupDeadline) > 3000) {
@@ -1136,8 +1136,8 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     if (Math.random() < 0.6) await moveMouseNaturally();
     else await safeMouseMove(randomInt(400, 900), randomInt(300, 700), { steps: randomInt(4, 10) });
     const madeProgress = countedPosts.length > countBeforeScan;
-    await safeMouseWheel(0, madeProgress ? randomInt(750, 1350) : randomInt(1150, 1850));
-    await wait(randomInt(600, 1100));
+    await safeMouseWheel(0, madeProgress ? randomInt(500, 850) : randomInt(800, 1300));
+    await wait(randomInt(1200, 2200));
   }
 
   if (!selectedPost) {
@@ -1357,7 +1357,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
       }
     }
 
-    await waitWithinBudget(randomInt(2500, 4500), webDeadline);
+    await waitWithinBudget(randomInt(3500, 5500), webDeadline);
   }
 
   if (!relatedClicked) {
