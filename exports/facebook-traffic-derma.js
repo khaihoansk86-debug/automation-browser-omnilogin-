@@ -103,14 +103,20 @@ async function waitWithinBudget(ms, deadline) {
 // ----------------------------------------------------
 async function watchFacebookStory(activePage, warmupDeadline) {
   try {
+    // Scroll to top of feed to see Story tray
+    await activePage.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    await wait(1500);
+
     const storyClicked = await activePage.evaluate(() => {
-      const storyCards = Array.from(document.querySelectorAll('a[href*="/stories/"], div[role="button"][aria-label*="story"], div[role="button"][aria-label*="Story"], div[role="button"][aria-label*="tin"], div[role="button"][aria-label*="Tin"]'));
-      for (const card of storyCards) {
+      // Find Story cards in Facebook top tray
+      const storyCandidates = Array.from(document.querySelectorAll('a[href*="/stories/"], div[role="button"][aria-label*="story" i], div[role="button"][aria-label*="tin" i], div[role="button"][aria-label*="Story" i], div[role="button"][aria-label*="Tin" i]'));
+      for (const card of storyCandidates) {
         const text = (card.textContent || '').trim();
         if (!text.includes('Tạo tin') && !text.includes('Create story') && !text.includes('Tạo Story')) {
           const rect = card.getBoundingClientRect();
-          if (rect.width > 20 && rect.height > 20 && rect.top < 350) {
+          if (rect.width > 20 && rect.height > 20 && rect.top >= 0 && rect.top < 450) {
             try {
+              card.scrollIntoView({ block: 'center', inline: 'center' });
               card.click();
               return true;
             } catch (e) {}
@@ -121,9 +127,9 @@ async function watchFacebookStory(activePage, warmupDeadline) {
     });
 
     if (storyClicked) {
-      console.log('[fb-warmup] Successfully opened Facebook Story! Watching 6-10 seconds...');
-      reportStep('fb_warmup_story', 'Đang xem Story ngẫu nhiên trên Facebook...');
-      await waitWithinBudget(randomInt(6000, 10000), warmupDeadline);
+      console.log('[fb-warmup] Successfully opened Facebook Story! Watching 8-12 seconds...');
+      reportStep('fb_warmup_story', 'Đang mở xem Story trên Facebook...');
+      await waitWithinBudget(randomInt(8000, 12000), warmupDeadline);
       await activePage.keyboard.press('Escape').catch(() => {});
       await wait(1500);
       return true;
@@ -152,9 +158,9 @@ async function watchFacebookVideo(activePage, warmupDeadline) {
     });
 
     if (videoClicked) {
-      console.log('[fb-warmup] Focused on Video/Reel! Watching 8-15 seconds...');
-      reportStep('fb_warmup_video', 'Đang tạm dừng xem Video/Reel ngẫu nhiên...');
-      await waitWithinBudget(randomInt(8000, 15000), warmupDeadline);
+      console.log('[fb-warmup] Focused on Video/Reel! Watching 10-16 seconds...');
+      reportStep('fb_warmup_video', 'Đang tạm dừng xem Video/Reel trên Feed...');
+      await waitWithinBudget(randomInt(10000, 16000), warmupDeadline);
       return true;
     }
   } catch (err) {
@@ -178,7 +184,7 @@ async function warmupFacebookFeed(config, deadline) {
   const warmupDeadline = Date.now() + Math.min(targetDurationMs, remainingMs(deadline));
   const startedAt = Date.now();
 
-  // Action 1: Xem Story (nếu có ở đầu trang)
+  // 1. Thao tác 1: Bắt buộc thử xem Story ở đầu trang
   await watchFacebookStory(page, warmupDeadline);
 
   let actionCount = 0;
@@ -189,21 +195,22 @@ async function warmupFacebookFeed(config, deadline) {
     const totalSec = Math.floor(targetDurationMs / 1000);
     reportStep('fb_warmup_reading', { elapsed: elapsedSec, total: totalSec });
 
-    // Action 2: Lướt News Feed xem nhiều bài đăng
+    // 2. Thao tác 2: Lướt tin dùng PageDown để chuyển qua bài viết tiếp theo (không bị dừng kẹt lại ở cmt bài đầu)
     if (Math.random() < 0.60) await moveMouseNaturally();
-    const deltaY = randomInt(350, 750);
-    await safeMouseWheel(0, deltaY);
-    actionCount++;
-    await waitWithinBudget(randomInt(2500, 5000), warmupDeadline);
 
-    // Action 3: Dừng xem Video / Reel (nếu tìm thấy trên feed)
-    if (!videoWatched && Math.random() < 0.35 && remainingMs(warmupDeadline) > 15000) {
+    await page.keyboard.press('PageDown').catch(() => {});
+    await safeMouseWheel(0, randomInt(300, 600));
+    actionCount++;
+    await waitWithinBudget(randomInt(3500, 6500), warmupDeadline);
+
+    // 3. Thao tác 3: Tạm dừng xem Video / Reel khi gặp trên feed
+    if (!videoWatched && Math.random() < 0.40 && remainingMs(warmupDeadline) > 15000) {
       videoWatched = await watchFacebookVideo(page, warmupDeadline);
       if (videoWatched) actionCount++;
     }
 
-    // Action 4: Đọc bình luận (mở ra đọc 3-5s rồi ấn Escape đóng lại để lướt tiếp)
-    if (Math.random() < 0.30 && remainingMs(warmupDeadline) > 12000) {
+    // 4. Thao tác 4: Xem & cuộn qua phần bình luận nếu có
+    if (Math.random() < 0.25 && remainingMs(warmupDeadline) > 12000) {
       try {
         const commentBtn = page.locator('div[role="button"]:has-text("Bình luận"), div[role="button"]:has-text("Comment"), span:has-text("bình luận")').first();
         if (await isVisibleSafe(commentBtn)) {
@@ -214,6 +221,7 @@ async function warmupFacebookFeed(config, deadline) {
           await commentBtn.click().catch(() => {});
           await waitWithinBudget(randomInt(3000, 5000), warmupDeadline);
           await page.keyboard.press('Escape').catch(() => {});
+          await page.keyboard.press('PageDown').catch(() => {}); // Cuộn cuộn chuyển sang bài tiếp ngay
           await wait(1000);
           actionCount++;
         }
