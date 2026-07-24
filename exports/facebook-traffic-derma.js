@@ -4,8 +4,8 @@ const DEFAULTS = {
   targetBaseUrl: 'https://khaihoanderma.com/',
   fbWarmupMinSeconds: 60,  // 1 minute
   fbWarmupMaxSeconds: 120, // 2 minutes
-  targetWebMinSeconds: 30,
-  targetWebMaxSeconds: 60,
+  targetWebMinSeconds: 120, // 2 minutes
+  targetWebMaxSeconds: 240, // 4 minutes
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\facebook-traffic-derma-output.json',
 };
 
@@ -1243,8 +1243,8 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   reportStep('fb_link_found', `Đã nhấp đúng link sản phẩm ${linkResult.destinationUrl}`);
 
   // Step 4: bounded functional QA on the Derma destination only.
-  const qaMinSeconds = Math.max(20, Math.min(config.targetWebMinSeconds, 45));
-  const qaMaxSeconds = Math.max(qaMinSeconds, Math.min(config.targetWebMaxSeconds, 60));
+  const qaMinSeconds = config.targetWebMinSeconds;
+  const qaMaxSeconds = Math.max(qaMinSeconds, config.targetWebMaxSeconds);
   const targetWebSeconds = randomInt(qaMinSeconds, qaMaxSeconds);
   const webDeadline = Math.min(Date.now() + targetWebSeconds * 1000, globalDeadline);
   const webStartedAt = Date.now();
