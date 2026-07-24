@@ -195,13 +195,17 @@ async function warmupFacebookFeed(config, deadline) {
     const totalSec = Math.floor(targetDurationMs / 1000);
     reportStep('fb_warmup_reading', { elapsed: elapsedSec, total: totalSec });
 
-    // 2. Thao tác 2: Lướt tin dùng PageDown để chuyển qua bài viết tiếp theo (không bị dừng kẹt lại ở cmt bài đầu)
+    // 2. Thao tác 2: Cuộn mượt qua các bài đăng trên Feed dùng window.scrollBy
     if (Math.random() < 0.60) await moveMouseNaturally();
 
-    await page.keyboard.press('PageDown').catch(() => {});
-    await safeMouseWheel(0, randomInt(300, 600));
+    const scrollDistance = randomInt(450, 850);
+    await page.evaluate((dist) => {
+      window.scrollBy({ top: dist, behavior: 'smooth' });
+    }, scrollDistance).catch(() => {});
+
+    await safeMouseWheel(0, randomInt(200, 400));
     actionCount++;
-    await waitWithinBudget(randomInt(3500, 6500), warmupDeadline);
+    await waitWithinBudget(randomInt(3000, 5500), warmupDeadline);
 
     // 3. Thao tác 3: Tạm dừng xem Video / Reel khi gặp trên feed
     if (!videoWatched && Math.random() < 0.40 && remainingMs(warmupDeadline) > 15000) {
@@ -210,7 +214,7 @@ async function warmupFacebookFeed(config, deadline) {
     }
 
     // 4. Thao tác 4: Xem & cuộn qua phần bình luận nếu có
-    if (Math.random() < 0.25 && remainingMs(warmupDeadline) > 12000) {
+    if (Math.random() < 0.20 && remainingMs(warmupDeadline) > 12000) {
       try {
         const commentBtn = page.locator('div[role="button"]:has-text("Bình luận"), div[role="button"]:has-text("Comment"), span:has-text("bình luận")').first();
         if (await isVisibleSafe(commentBtn)) {
@@ -221,7 +225,8 @@ async function warmupFacebookFeed(config, deadline) {
           await commentBtn.click().catch(() => {});
           await waitWithinBudget(randomInt(3000, 5000), warmupDeadline);
           await page.keyboard.press('Escape').catch(() => {});
-          await page.keyboard.press('PageDown').catch(() => {}); // Cuộn cuộn chuyển sang bài tiếp ngay
+          // Scroll past comment section immediately
+          await page.evaluate(() => window.scrollBy({ top: 600, behavior: 'smooth' })).catch(() => {});
           await wait(1000);
           actionCount++;
         }
