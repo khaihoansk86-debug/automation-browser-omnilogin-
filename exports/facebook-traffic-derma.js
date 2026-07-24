@@ -202,8 +202,12 @@ async function searchFacebookPage(query, deadline) {
     if (await isVisibleSafe(searchInput)) {
       await searchInput.click().catch(() => {});
       await wait(500);
-      await searchInput.fill(query).catch(() => {});
-      await wait(800);
+      try {
+        await page.keyboard.type(query, { delay: randomInt(60, 150) });
+      } catch (err) {
+        await searchInput.fill(query).catch(() => {});
+      }
+      await wait(800 + randomInt(200, 600));
       await searchInput.press('Enter').catch(() => {});
     } else {
       console.log('[fb-search] Direct search input not found, navigating via URL...');
@@ -553,10 +557,12 @@ async function expandSeeMoreInPost(
       );
 
       if (seeMoreBox) {
+        const jitterX = randomInt(-10, 10);
+        const jitterY = randomInt(-4, 4);
         await page.mouse
           .click(
-            seeMoreBox.x + seeMoreBox.width / 2,
-            seeMoreBox.y + seeMoreBox.height / 2,
+            seeMoreBox.x + seeMoreBox.width / 2 + jitterX,
+            seeMoreBox.y + seeMoreBox.height / 2 + jitterY,
           )
           .catch(() => {});
       } else {
@@ -787,10 +793,12 @@ async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
     const anchorBox = await anchor.boundingBox().catch(() => null);
     reportStep('fb_target_link_clicking', 'Đang bấm link sản phẩm Khải Hoàn Derma');
     if (anchorBox) {
+      const jitterX = randomInt(-15, 15);
+      const jitterY = randomInt(-5, 5);
       await page.mouse
         .click(
-          anchorBox.x + anchorBox.width / 2,
-          anchorBox.y + anchorBox.height / 2,
+          anchorBox.x + anchorBox.width / 2 + jitterX,
+          anchorBox.y + anchorBox.height / 2 + jitterY,
         )
         .catch(() => {});
     } else {
@@ -1125,10 +1133,11 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
 
     if (selectedPost) break;
-    await safeMouseMove(820, 500, { steps: randomInt(4, 8) });
+    if (Math.random() < 0.6) await moveMouseNaturally();
+    else await safeMouseMove(randomInt(400, 900), randomInt(300, 700), { steps: randomInt(4, 10) });
     const madeProgress = countedPosts.length > countBeforeScan;
-    await safeMouseWheel(0, madeProgress ? randomInt(850, 1250) : randomInt(1250, 1750));
-    await wait(randomInt(500, 900));
+    await safeMouseWheel(0, madeProgress ? randomInt(750, 1350) : randomInt(1150, 1850));
+    await wait(randomInt(600, 1100));
   }
 
   if (!selectedPost) {
