@@ -1790,16 +1790,7 @@ async function main() {
           }
           const resolvedIds = profileResolve.resolved;
           const profilesToRun = profileResolve.profiles.filter((p) => resolvedIds.includes(p.id));
-          if (app.appId === 'facebook-traffic-derma' && profilesToRun.length !== 1) {
-            await telegram.sendMessage(
-              chatId,
-              [
-                '<b>Facebook Referral QA chỉ chạy một profile mỗi lần</b>',
-                `Dùng lệnh: ${code('/run app=fb profile=37 close=1')}`,
-              ].join('\n'),
-            );
-            continue;
-          }
+
 
           const delayRange = parseDelayRange(args.delay, defaultDelaySeconds);
           const profileRunSeconds =
