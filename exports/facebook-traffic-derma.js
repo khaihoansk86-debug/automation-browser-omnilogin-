@@ -331,49 +331,84 @@ async function getPostIdentity(article) {
 
 async function collectPageArticles(activePage, seenPostKeys, limit) {
   try {
-    const seeMoreButtons = await activePage.locator('div[role="button"]').all();
-    const collected = [];
+    const discoveredPosts = await activePage.evaluate(() => {
+      const reactionButtons = Array.from(document.querySelectorAll('div[role="button"]'))
+        .filter((element) => {
+          const text = (element.innerText || '').trim();
+          return text === 'Thích' || text === 'Like';
+        });
+      const roots = [];
+      const uniqueRoots = new Set();
 
-    for (const seeMoreButton of seeMoreButtons) {
-      if (!(await seeMoreButton.isVisible().catch(() => false))) continue;
-      const buttonText = (await seeMoreButton.innerText().catch(() => '')).trim();
-      if (buttonText !== 'Xem thêm' && buttonText !== 'See more') continue;
+      for (const reactionButton of reactionButtons) {
+        let current = reactionButton.parentElement;
+        let postRoot = null;
 
-      const buttonBox = await seeMoreButton.boundingBox().catch(() => null);
-      if (!buttonBox || buttonBox.width > 220 || buttonBox.height > 80) continue;
+        for (let level = 1; current && current !== document.body && level <= 20; level++) {
+          const box = current.getBoundingClientRect();
+          const text = (current.innerText || '').trim();
+          const isPostCard =
+            box.width >= 420 &&
+            box.width <= 900 &&
+            box.height >= 180 &&
+            /Khải Hoàn Derma/i.test(text) &&
+            text.length >= 100;
 
-      let article = seeMoreButton;
-      let articleText = '';
-
-      // Facebook no longer exposes reliable role="article" wrappers on this Page.
-      // Walk upward from the exact content expander until reaching the compact post card.
-      for (let level = 1; level <= 16; level++) {
-        article = article.locator('xpath=..');
-        const box = await article.boundingBox().catch(() => null);
-        if (!box || box.width < 420 || box.width > 900 || box.height < 180) continue;
-
-        const candidateText = (await article.innerText().catch(() => '')).trim();
-        const normalizedText = candidateText.toLowerCase();
-        const isTargetPagePost =
-          normalizedText.includes('dược mỹ phẩm-khải hoàn derma') ||
-          normalizedText.includes('khải hoàn derma') ||
-          normalizedText.includes('khai hoan derma');
-
-        if (isTargetPagePost && candidateText.length >= 100) {
-          articleText = candidateText;
-          break;
+          if (isPostCard) {
+            postRoot = current;
+            break;
+          }
+          current = current.parentElement;
         }
+
+        if (!postRoot || uniqueRoots.has(postRoot)) continue;
+        uniqueRoots.add(postRoot);
+
+        const seeMore = Array.from(postRoot.querySelectorAll('div[role="button"]'))
+          .find((element) => {
+            const text = (element.innerText || '').trim();
+            return text === 'Xem thêm' || text === 'See more';
+          });
+        if (!seeMore) continue;
+
+        const cleanText = (postRoot.innerText || '')
+          .replace(/Facebook/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const seed = cleanText.slice(0, 700);
+        let hash = 2166136261;
+        for (let index = 0; index < seed.length; index++) {
+          hash ^= seed.charCodeAt(index);
+          hash = Math.imul(hash, 16777619);
+        }
+
+        const key = `omni-fb-${(hash >>> 0).toString(16)}`;
+        postRoot.setAttribute('data-omni-fb-post-key', key);
+        const box = postRoot.getBoundingClientRect();
+        roots.push({
+          key,
+          documentTop: Math.round(box.top + window.scrollY),
+        });
       }
 
-      if (!articleText) continue;
+      roots.sort((left, right) => left.documentTop - right.documentTop);
+      return roots;
+    });
+    const collected = [];
 
-      const { key, permalinkUrl } = await getPostIdentity(article);
+    for (const discoveredPost of discoveredPosts) {
+      const key = discoveredPost.key;
       if (!key || seenPostKeys.has(key)) continue;
+
+      const article = activePage
+        .locator(`[data-omni-fb-post-key="${key}"]`)
+        .first();
+      if (!(await article.isVisible().catch(() => false))) continue;
 
       seenPostKeys.add(key);
       collected.push({
         key,
-        permalinkUrl,
+        permalinkUrl: '',
         article,
       });
       if (collected.length >= limit) break;
@@ -732,6 +767,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   const countedPosts = [];
   let scanAttempts = 0;
   let selectedPost = null;
+  const scanDeadline = Math.min(Date.now() + 45000, globalDeadline - 35000);
 
   console.log(`[fb-target] Random target post: ${targetPostIndex}/${maxPostsToInspect}.`);
   reportStep('fb_random_position', {
@@ -739,9 +775,13 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     maxPosts: maxPostsToInspect,
   });
 
-  while (countedPosts.length < targetPostIndex && scanAttempts < maxPostsToInspect * 8) {
-    if (remainingMs(globalDeadline) <= 35000) break;
+  while (
+    countedPosts.length < targetPostIndex &&
+    scanAttempts < 30 &&
+    Date.now() < scanDeadline
+  ) {
     scanAttempts++;
+    const countBeforeScan = countedPosts.length;
 
     const loadedPosts = await collectPageArticles(
       activePage,
@@ -769,9 +809,10 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
 
     if (selectedPost) break;
-    if (Math.random() < 0.65) await moveMouseNaturally();
-    await safeMouseWheel(0, randomInt(480, 820));
-    await wait(randomInt(1000, 2000));
+    await safeMouseMove(820, 500, { steps: randomInt(4, 8) });
+    const madeProgress = countedPosts.length > countBeforeScan;
+    await safeMouseWheel(0, madeProgress ? randomInt(850, 1250) : randomInt(1250, 1750));
+    await wait(randomInt(500, 900));
   }
 
   if (!selectedPost) {
