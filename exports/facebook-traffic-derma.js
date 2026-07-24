@@ -1,5 +1,5 @@
 const DEFAULTS = {
-  fbSearchQuery: 'DÆ°á»£c má»¹ pháº©m-Kháº£i HoÃ n Derma',
+  fbSearchQuery: 'Dược mỹ phẩm-Khải Hoàn Derma',
   targetDomain: 'khaihoanderma.com',
   targetBaseUrl: 'https://khaihoanderma.com/',
   fbWarmupMinSeconds: 60,  // 1 minute
@@ -10,15 +10,15 @@ const DEFAULTS = {
 };
 
 const WEBSITE_SEARCH_KEYWORDS = [
-  'má»¥n viÃªm',
-  'phá»¥c há»“i da',
+  'mụn viêm',
+  'phục hồi da',
   'tretinoin',
   'serum',
-  'kem chá»‘ng náº¯ng',
-  'káº½m',
+  'kem chống nắng',
+  'kẽm',
   'niacinamide',
-  'sá»¯a rá»­a máº·t',
-  'táº©y trang',
+  'sữa rửa mặt',
+  'tẩy trang',
 ];
 
 function param(name) {
@@ -112,7 +112,7 @@ async function watchFacebookStory(activePage, warmupDeadline) {
       const storyCandidates = Array.from(document.querySelectorAll('a[href*="/stories/"], div[role="button"][aria-label*="story" i], div[role="button"][aria-label*="tin" i], div[role="button"][aria-label*="Story" i], div[role="button"][aria-label*="Tin" i]'));
       for (const card of storyCandidates) {
         const text = (card.textContent || '').trim();
-        if (!text.includes('Táº¡o tin') && !text.includes('Create story') && !text.includes('Táº¡o Story')) {
+        if (!text.includes('Tạo tin') && !text.includes('Create story') && !text.includes('Tạo Story')) {
           const rect = card.getBoundingClientRect();
           if (rect.width > 20 && rect.height > 20 && rect.top >= 0 && rect.top < 450) {
             try {
@@ -128,7 +128,7 @@ async function watchFacebookStory(activePage, warmupDeadline) {
 
     if (storyClicked) {
       console.log('[fb-warmup] Successfully opened Facebook Story! Watching 8-12 seconds...');
-      reportStep('fb_warmup_story', 'Äang má»Ÿ xem Story trÃªn Facebook...');
+      reportStep('fb_warmup_story', 'Đang mở xem Story trên Facebook...');
       await waitWithinBudget(randomInt(8000, 12000), warmupDeadline);
       await activePage.keyboard.press('Escape').catch(() => {});
       await wait(1500);
@@ -159,7 +159,7 @@ async function watchFacebookVideo(activePage, warmupDeadline) {
 
     if (videoClicked) {
       console.log('[fb-warmup] Focused on Video/Reel! Watching 10-16 seconds...');
-      reportStep('fb_warmup_video', 'Äang táº¡m dá»«ng xem Video/Reel trÃªn Feed...');
+      reportStep('fb_warmup_video', 'Đang tạm dừng xem Video/Reel trên Feed...');
       await waitWithinBudget(randomInt(10000, 16000), warmupDeadline);
       return true;
     }
@@ -171,7 +171,7 @@ async function watchFacebookVideo(activePage, warmupDeadline) {
 
 async function warmupFacebookFeed(config, deadline) {
   console.log('[fb-warmup] Navigating to Facebook home...');
-  reportStep('fb_warmup_start', 'Má»Ÿ Facebook vÃ  lÆ°á»›t tin ngáº«u nhiÃªn...');
+  reportStep('fb_warmup_start', 'Mở Facebook và lướt tin ngẫu nhiên...');
 
   try {
     await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -184,7 +184,7 @@ async function warmupFacebookFeed(config, deadline) {
   const warmupDeadline = Date.now() + Math.min(targetDurationMs, remainingMs(deadline));
   const startedAt = Date.now();
 
-  // 1. Thao tÃ¡c 1: Báº¯t buá»™c thá»­ xem Story á»Ÿ Ä‘áº§u trang
+  // 1. Thao tác 1: Bắt buộc thử xem Story ở đầu trang
   await watchFacebookStory(page, warmupDeadline);
 
   let actionCount = 0;
@@ -195,7 +195,7 @@ async function warmupFacebookFeed(config, deadline) {
     const totalSec = Math.floor(targetDurationMs / 1000);
     reportStep('fb_warmup_reading', { elapsed: elapsedSec, total: totalSec });
 
-    // 2. Thao tÃ¡c 2: Cuá»™n mÆ°á»£t qua cÃ¡c bÃ i Ä‘Äƒng trÃªn Feed dÃ¹ng window.scrollBy
+    // 2. Thao tác 2: Cuộn mượt qua các bài đăng trên Feed dùng window.scrollBy
     if (Math.random() < 0.60) await moveMouseNaturally();
 
     const scrollDistance = randomInt(450, 850);
@@ -207,19 +207,19 @@ async function warmupFacebookFeed(config, deadline) {
     actionCount++;
     await waitWithinBudget(randomInt(3000, 5500), warmupDeadline);
 
-    // 3. Thao tÃ¡c 3: Táº¡m dá»«ng xem Video / Reel khi gáº·p trÃªn feed
+    // 3. Thao tác 3: Tạm dừng xem Video / Reel khi gặp trên feed
     if (!videoWatched && Math.random() < 0.40 && remainingMs(warmupDeadline) > 15000) {
       videoWatched = await watchFacebookVideo(page, warmupDeadline);
       if (videoWatched) actionCount++;
     }
 
-    // 4. Thao tÃ¡c 4: Xem & cuá»™n qua pháº§n bÃ¬nh luáº­n náº¿u cÃ³
+    // 4. Thao tác 4: Xem & cuộn qua phần bình luận nếu có
     if (Math.random() < 0.20 && remainingMs(warmupDeadline) > 12000) {
       try {
-        const commentBtn = page.locator('div[role="button"]:has-text("BÃ¬nh luáº­n"), div[role="button"]:has-text("Comment"), span:has-text("bÃ¬nh luáº­n")').first();
+        const commentBtn = page.locator('div[role="button"]:has-text("Bình luận"), div[role="button"]:has-text("Comment"), span:has-text("bình luận")').first();
         if (await isVisibleSafe(commentBtn)) {
           console.log('[fb-warmup] Expanding comments on post...');
-          reportStep('fb_warmup_comment', 'Báº¥m má»Ÿ Ä‘á»c bÃ¬nh luáº­n trÃªn bÃ i Ä‘Äƒng...');
+          reportStep('fb_warmup_comment', 'Bấm mở đọc bình luận trên bài đăng...');
           await commentBtn.scrollIntoViewIfNeeded().catch(() => {});
           await wait(600);
           await commentBtn.click().catch(() => {});
@@ -234,7 +234,7 @@ async function warmupFacebookFeed(config, deadline) {
     }
   }
 
-  reportStep('fb_warmup_done', 'ÄÃ£ hoÃ n thÃ nh lÆ°á»›t Facebook Feed 1-2 phÃºt!');
+  reportStep('fb_warmup_done', 'Đã hoàn thành lướt Facebook Feed 1-2 phút!');
   return { elapsedMs: Date.now() - startedAt, actionCount };
 }
 
@@ -243,10 +243,10 @@ async function warmupFacebookFeed(config, deadline) {
 // ----------------------------------------------------
 async function searchFacebookPage(query, deadline) {
   console.log(`[fb-search] Searching for Fanpage: "${query}"...`);
-  reportStep('fb_search_start', `TÃ¬m kiáº¿m Facebook Page: "${query}"...`);
+  reportStep('fb_search_start', `Tìm kiếm Facebook Page: "${query}"...`);
 
   try {
-    const searchInput = page.locator('input[aria-label*="Search Facebook"], input[aria-label*="TÃ¬m kiáº¿m trÃªn Facebook"], input[placeholder*="Search"], input[type="search"], label[aria-label*="Search"] input, input[aria-label*="TÃ¬m kiáº¿m"]').first();
+    const searchInput = page.locator('input[aria-label*="Search Facebook"], input[aria-label*="Tìm kiếm trên Facebook"], input[placeholder*="Search"], input[type="search"], label[aria-label*="Search"] input, input[aria-label*="Tìm kiếm"]').first();
     
     if (await isVisibleSafe(searchInput)) {
       await searchInput.click().catch(() => {});
@@ -264,7 +264,7 @@ async function searchFacebookPage(query, deadline) {
   }
 
   await wait(4000 + randomInt(0, 2000));
-  reportStep('fb_search_results', 'Äang quÃ©t káº¿t quáº£ tÃ¬m kiáº¿m Page...');
+  reportStep('fb_search_results', 'Đang quét kết quả tìm kiếm Page...');
 
   let pageFound = false;
 
@@ -277,14 +277,14 @@ async function searchFacebookPage(query, deadline) {
         const parentText = (a.closest('div[role="article"], div[role="main"] > div') || a.parentElement)?.textContent || '';
         const href = a.href || '';
         if (
-          (text.includes('Kháº£i HoÃ n Derma') || text.includes('DÆ°á»£c má»¹ pháº©m-Kháº£i HoÃ n')) &&
+          (text.includes('Khải Hoàn Derma') || text.includes('Dược mỹ phẩm-Khải Hoàn')) &&
           href.includes('facebook.com')
         ) {
           results.push({
             href,
             text,
             parentText,
-            matchedInfo: parentText.includes('Spa') || parentText.includes('Váº¡n Thuá»· TÃº') || parentText.includes('Phan Thiáº¿t') || parentText.includes('BÃ¬nh Thuáº­n')
+            matchedInfo: parentText.includes('Spa') || parentText.includes('Vạn Thuỷ Tú') || parentText.includes('Phan Thiết') || parentText.includes('Bình Thuận')
           });
         }
       }
@@ -313,12 +313,12 @@ async function searchFacebookPage(query, deadline) {
   }
 
   if (!pageFound) {
-    console.log('[fb-search] Fallback: Navigating directly to Kháº£i HoÃ n Derma Fanpage URL...');
+    console.log('[fb-search] Fallback: Navigating directly to Khải Hoàn Derma Fanpage URL...');
     await page.goto('https://www.facebook.com/khaihoanderma', { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => {});
   }
 
   await wait(4000 + randomInt(0, 2000));
-  reportStep('fb_page_opened', 'ÄÃ£ truy cáº­p vÃ o Fanpage Kháº£i HoÃ n Derma!');
+  reportStep('fb_page_opened', 'Đã truy cập vào Fanpage Khải Hoàn Derma!');
   return true;
 }
 
@@ -330,9 +330,9 @@ async function expandSeeMoreButtons(activePage) {
       for (const el of candidates) {
         const text = (el.textContent || '').trim();
         if (
-          text === 'Xem thÃªm' ||
+          text === 'Xem thêm' ||
           text === 'See more' ||
-          text.includes('Xem thÃªm') ||
+          text.includes('Xem thêm') ||
           text.includes('See more')
         ) {
           if (text.length < 35) {
@@ -346,7 +346,7 @@ async function expandSeeMoreButtons(activePage) {
       return count;
     });
     if (clickedCount > 0) {
-      console.log(`[fb-target] Clicked ${clickedCount} "Xem thÃªm" button(s) to expand post text!`);
+      console.log(`[fb-target] Clicked ${clickedCount} "Xem thêm" button(s) to expand post text!`);
       await wait(1500);
     }
   } catch (err) {
@@ -425,14 +425,15 @@ async function findAndClickPostWebsiteLink(activePage, targetDomain) {
 // ----------------------------------------------------
 async function auditFanpageAndWebsite(config, globalDeadline) {
   console.log('[fb-target] Starting Fanpage 10 posts inspection & website referral phase...');
-  reportStep('fb_target_start', 'Báº¯t Ä‘áº§u lÆ°á»›t 10 bÃ i Ä‘Äƒng Fanpage & tÃ¬m link Website...');
+  reportStep('fb_target_start', 'Bắt đầu lướt 10 bài đăng Fanpage & tìm link Website...');
 
   let targetWebOpened = false;
   let activePage = page;
   let clickedLinkInfo = null;
 
+  // Step 3: Lướt xem từ từ 10 bài ngẫu nhiên gần nhất trên Fanpage
   const maxPostsToInspect = 12;
-  const targetPostIndex = randomInt(4, 9);
+  const targetPostIndex = randomInt(4, 9); // Bắt đầu tìm link từ bài số ngẫu nhiên này trở đi
 
   console.log(`[fb-target] Will scroll to post ${targetPostIndex} before looking for target links...`);
 
@@ -442,22 +443,24 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     console.log(`[fb-target] Inspecting Fanpage post ${postIdx}/${maxPostsToInspect}...`);
     reportStep('fb_post_reading', { postNum: postIdx, maxPosts: maxPostsToInspect });
 
+    // Cuộn xuống từ từ để xem bài đăng tiếp theo
     if (Math.random() < 0.65) await moveMouseNaturally();
     await safeMouseWheel(0, randomInt(380, 750));
-    await wait(randomInt(3000, 5000)); // Pause to read the post
-    
+    await wait(randomInt(3000, 5000)); // Dừng lại từ từ 3-5s đọc bài
+
     let clickResult = { success: false };
-    
+
+    // Chỉ bấm "Xem thêm" và tìm link khi đã lướt đủ số bài ngẫu nhiên
     if (postIdx >= targetPostIndex) {
-      // Only expand see more and click if we reached the target post
       await expandSeeMoreButtons(activePage);
+      // Kiểm tra và bấm link khaihoanderma.com trên bài đăng
       clickResult = await findAndClickPostWebsiteLink(activePage, config.targetDomain);
     }
 
     if (clickResult.success) {
       clickedLinkInfo = clickResult;
       console.log(`[fb-target] Clicked post website link: ${clickResult.href}`);
-      reportStep('fb_link_found', `ÄÃ£ báº¥m má»Ÿ link trÃªn bÃ i Ä‘Äƒng Fanpage sang ${config.targetDomain}`);
+      reportStep('fb_link_found', `Đã bấm mở link trên bài đăng Fanpage sang ${config.targetDomain}`);
 
       await wait(4000);
 
@@ -477,13 +480,13 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
         console.log('[fb-target] Switched activePage to target tab:', await activePage.url().catch(() => ''));
       }
 
-      // Outbound redirect modal handler ("Báº¡n Ä‘ang rá»i khá»i Facebook")
+      // Outbound redirect modal handler ("Bạn đang rời khỏi Facebook")
       try {
         const currentUrl = await activePage.url().catch(() => '');
         if (currentUrl.includes('l.facebook.com') || currentUrl.includes('facebook.com')) {
-          const proceedBtn = activePage.locator('button:has-text("Tiáº¿p tá»¥c"), button:has-text("Continue"), a:has-text("Má»Ÿ liÃªn káº¿t"), div[role="button"]:has-text("Tiáº¿p tá»¥c"), a[href*="khaihoanderma.com"]').first();
+          const proceedBtn = activePage.locator('button:has-text("Tiếp tục"), button:has-text("Continue"), a:has-text("Mở liên kết"), div[role="button"]:has-text("Tiếp tục"), a[href*="khaihoanderma.com"]').first();
           if (await isVisibleSafe(proceedBtn)) {
-            console.log('[fb-target] Outbound redirect modal detected! Clicking Continue/Tiáº¿p tá»¥c...');
+            console.log('[fb-target] Outbound redirect modal detected! Clicking Continue/Tiếp tục...');
             await proceedBtn.click().catch(() => {});
             await wait(5000);
 
@@ -519,7 +522,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   // ----------------------------------------------------
   const targetWebSeconds = randomInt(config.targetWebMinSeconds, config.targetWebMaxSeconds);
   console.log(`[web-audit] Starting ${targetWebSeconds}-second natural interaction on target website (2-4 minutes)...`);
-  reportStep('web_audit_start', `Äang lÆ°á»›t Ä‘á»c bÃ i, xem sáº£n pháº©m & giá» hÃ ng (${targetWebSeconds}s)...`);
+  reportStep('web_audit_start', `Đang lướt đọc bài, xem sản phẩm & giỏ hàng (${targetWebSeconds}s)...`);
 
   const webDurationMs = targetWebSeconds * 1000;
   const webDeadline = Date.now() + webDurationMs;
@@ -539,7 +542,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
 
     const actionRoll = Math.random();
 
-    // Action A: LÆ°á»›t Ä‘á»c bÃ i & xem áº£nh sáº£n pháº©m (40%)
+    // Action A: Lướt đọc bài & xem ảnh sản phẩm (40%)
     if (actionRoll < 0.40) {
       const deltaY = (Math.random() < 0.80 ? 1 : -1) * randomInt(280, 680);
       try {
@@ -547,7 +550,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
       } catch (e) {}
       await waitWithinBudget(randomInt(3000, 7000), webDeadline);
     }
-    // Action B: Má»Ÿ Tab MÃ´ táº£ / ThÃ nh pháº§n / ÄÃ¡nh giÃ¡ sáº£n pháº©m (20%)
+    // Action B: Mở Tab Mô tả / Thành phần / Đánh giá sản phẩm (20%)
     else if (actionRoll < 0.60) {
       try {
         const descTab = activePage.locator('#tab-title-description a, li.description_tab a').first();
@@ -562,14 +565,14 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
         }
       } catch (e) {}
     }
-    // Action C: TÃ¬m kiáº¿m sáº£n pháº©m trÃªn thanh tÃ¬m kiáº¿m cá»§a Website (15%)
+    // Action C: Tìm kiếm sản phẩm trên thanh tìm kiếm của Website (15%)
     else if (!searchPerformed && actionRoll < 0.75 && remainingMs(webDeadline) > 25000) {
       try {
-        const searchInput = activePage.locator('input[name="s"], input[type="search"], .search-field, input[placeholder*="TÃ¬m"], input[placeholder*="Search"]').first();
+        const searchInput = activePage.locator('input[name="s"], input[type="search"], .search-field, input[placeholder*="Tìm"], input[placeholder*="Search"]').first();
         if (await isVisibleSafe(searchInput)) {
           const keyword = WEBSITE_SEARCH_KEYWORDS[Math.floor(Math.random() * WEBSITE_SEARCH_KEYWORDS.length)];
           console.log(`[web-audit] Internal site search for keyword: "${keyword}"...`);
-          reportStep('web_search', `TÃ¬m kiáº¿m ná»™i bá»™ website: "${keyword}"...`);
+          reportStep('web_search', `Tìm kiếm nội bộ website: "${keyword}"...`);
 
           await searchInput.click().catch(() => {});
           await wait(500);
@@ -581,20 +584,20 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
         }
       } catch (e) {}
     }
-    // Action D: Bá» sáº£n pháº©m vÃ o giá» hÃ ng (15%)
+    // Action D: Bỏ sản phẩm vào giỏ hàng (15%)
     else if (!addedToCart && actionRoll < 0.90) {
       try {
-        const cartBtn = activePage.locator('button.single_add_to_cart_button, a.add_to_cart_button, .ajax_add_to_cart, button:has-text("ThÃªm vÃ o giá»"), a:has-text("ThÃªm vÃ o giá»")').first();
+        const cartBtn = activePage.locator('button.single_add_to_cart_button, a.add_to_cart_button, .ajax_add_to_cart, button:has-text("Thêm vào giỏ"), a:has-text("Thêm vào giỏ")').first();
         if (await isVisibleSafe(cartBtn)) {
           console.log('[web-audit] Simulating Add to Cart click!');
-          reportStep('web_add_to_cart', 'Bá» sáº£n pháº©m vÃ o giá» hÃ ng thÃ nh cÃ´ng!');
+          reportStep('web_add_to_cart', 'Bỏ sản phẩm vào giỏ hàng thành công!');
           await cartBtn.click().catch(() => {});
           addedToCart = true;
           await waitWithinBudget(4000, webDeadline);
         }
       } catch (e) {}
     }
-    // Action E: Xem cÃ¡c sáº£n pháº©m/bÃ i viáº¿t tÆ°Æ¡ng tá»± (10%)
+    // Action E: Xem các sản phẩm/bài viết tương tự (10%)
     else {
       try {
         const productLinks = await activePage.evaluate((targetDomain) => {
@@ -617,7 +620,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
   }
 
-  reportStep('web_audit_done', `HoÃ n táº¥t ${targetWebSeconds}s lÆ°á»›t Ä‘á»c bÃ i & tÆ°Æ¡ng tÃ¡c Website!`);
+  reportStep('web_audit_done', `Hoàn tất ${targetWebSeconds}s lướt đọc bài & tương tác Website!`);
   return {
     targetWebOpened,
     addedToCart,
