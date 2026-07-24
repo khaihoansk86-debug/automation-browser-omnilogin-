@@ -396,6 +396,7 @@ async function findAndClickPostWebsiteLink(activePage, targetDomain) {
 
         if (isDirect || isFbRedirect) {
           a.scrollIntoView({ block: 'center', inline: 'center' });
+          a.removeAttribute('target'); // Tránh mở tab mới gây lỗi 2 tab
           const rect = a.getBoundingClientRect();
           try {
             a.click();
@@ -617,7 +618,11 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
           const anchors = Array.from(document.querySelectorAll('a[href]'));
           return anchors
             .map(a => a.href)
-            .filter(href => href.includes(targetDomain) && !href.includes('#'))
+            .filter(href => 
+              href.includes(targetDomain) && 
+              !href.includes('#') && 
+              (href.includes('/product/') || href.includes('/san-pham/') || href.includes('/tin-tuc/') || href.includes('/cua-hang/'))
+            )
             .slice(0, 15);
         }, config.targetDomain);
 
