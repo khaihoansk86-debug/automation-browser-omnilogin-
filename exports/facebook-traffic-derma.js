@@ -299,22 +299,61 @@ function normalizeFacebookPermalink(value) {
 
 async function getPostIdentity(article) {
   const text = (await article.innerText().catch(() => '')).trim();
-  const permalink = article
+  const permalinkCandidates = await article
     .locator(
-      'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/videos/"], ' +
-      'a[href*="/reel/"], a[href*="story_fbid="], a[href*="/photo/?fbid="], ' +
-      'a[href*="/photos/"]',
+      'a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid="], ' +
+      'a[href*="/share/p/"]',
     )
-    .first();
-  const permalinkHref = (await permalink.getAttribute('href').catch(() => '')) || '';
-  const permalinkUrl = normalizeFacebookPermalink(permalinkHref);
+    .all();
+  let permalinkUrl = '';
+  let bestPriority = Number.POSITIVE_INFINITY;
+
+  for (const candidate of permalinkCandidates) {
+    const href = (await candidate.getAttribute('href').catch(() => '')) || '';
+    const normalized = normalizeFacebookPermalink(href);
+    if (!normalized) continue;
+
+    const priority =
+      /\/posts\/|\/permalink\/|story_fbid=/i.test(normalized)
+        ? 0
+        : 1;
+    if (priority < bestPriority) {
+      permalinkUrl = normalized;
+      bestPriority = priority;
+    }
+  }
+
   return {
     key: permalinkUrl || text.replace(/\s+/g, ' ').slice(0, 220),
     permalinkUrl,
   };
 }
 
-async function collectLoadedPosts(activePage, seenPostKeys, limit) {
+async function postHasExactSeeMore(article) {
+  const controls = await article
+    .locator('div[role="button"], span[role="button"], a[role="button"], span, a')
+    .all();
+  for (const control of controls) {
+    if (!(await control.isVisible().catch(() => false))) continue;
+    const text = (await control.innerText().catch(() => '')).trim();
+    if (text === 'Xem thêm' || text === 'See more') return true;
+  }
+  return false;
+}
+
+async function postContainsDermaLink(article, targetDomain) {
+  const anchors = await article.locator('a[href]').all();
+  for (const anchor of anchors) {
+    const href = (await anchor.getAttribute('href').catch(() => '')) || '';
+    const destinationUrl = resolveFacebookOutboundUrl(href, targetDomain);
+    if (!destinationUrl) continue;
+    const parsed = new URL(destinationUrl);
+    if (parsed.pathname.replace(/\/+$/, '')) return true;
+  }
+  return false;
+}
+
+async function collectLoadedPosts(activePage, seenPostKeys, limit, targetDomain) {
   try {
     const articles = await activePage
       .locator('div[role="feed"] div[role="article"], div[role="main"] div[role="article"]')
@@ -327,10 +366,15 @@ async function collectLoadedPosts(activePage, seenPostKeys, limit) {
       if (!box || box.width < 250 || box.height < 120) continue;
 
       const { key, permalinkUrl } = await getPostIdentity(article);
-      if (!key || !permalinkUrl || seenPostKeys.has(key)) continue;
+      if (!key || seenPostKeys.has(key)) continue;
 
       seenPostKeys.add(key);
-      collected.push({ key, permalinkUrl });
+      collected.push({
+        key,
+        permalinkUrl,
+        hasSeeMore: await postHasExactSeeMore(article),
+        hasDermaLink: await postContainsDermaLink(article, targetDomain),
+      });
       if (collected.length >= limit) break;
     }
 
@@ -341,7 +385,22 @@ async function collectLoadedPosts(activePage, seenPostKeys, limit) {
   }
 }
 
-async function waitForPrimaryPost(activePage, timeoutMs = 20000) {
+function sameFacebookPost(left, right) {
+  const leftUrl = normalizeFacebookPermalink(left);
+  const rightUrl = normalizeFacebookPermalink(right);
+  if (!leftUrl || !rightUrl) return false;
+
+  const leftParsed = new URL(leftUrl);
+  const rightParsed = new URL(rightUrl);
+  const normalizePath = (value) => value.pathname.replace(/\/+$/, '').toLowerCase();
+  return (
+    normalizePath(leftParsed) === normalizePath(rightParsed) &&
+    (leftParsed.searchParams.get('story_fbid') || '') ===
+      (rightParsed.searchParams.get('story_fbid') || '')
+  );
+}
+
+async function waitForSelectedPost(activePage, expectedPermalink, targetDomain, timeoutMs = 20000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const articles = await activePage
@@ -353,7 +412,27 @@ async function waitForPrimaryPost(activePage, timeoutMs = 20000) {
     for (const article of articles) {
       if (!(await article.isVisible().catch(() => false))) continue;
       const box = await article.boundingBox().catch(() => null);
-      if (box && box.width >= 250 && box.height >= 120) return article;
+      if (!box || box.width < 250 || box.height < 120) continue;
+
+      const identity = await getPostIdentity(article);
+      if (
+        identity.permalinkUrl &&
+        sameFacebookPost(identity.permalinkUrl, expectedPermalink)
+      ) {
+        return article;
+      }
+
+      const articleText = (await article.innerText().catch(() => '')).toLowerCase();
+      const isTargetAuthor =
+        articleText.includes('khải hoàn derma') ||
+        articleText.includes('khai hoan derma');
+      if (
+        isTargetAuthor &&
+        (await postHasExactSeeMore(article)) &&
+        (await postContainsDermaLink(article, targetDomain))
+      ) {
+        return article;
+      }
     }
     await wait(500);
   }
@@ -713,9 +792,15 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
       activePage,
       seenPostKeys,
       maxPostsToInspect - recentPosts.length,
+      config.targetDomain,
     );
     if (loadedPosts.length > 0) {
-      recentPosts.push(...loadedPosts);
+      for (const loadedPost of loadedPosts) {
+        recentPosts.push({
+          ...loadedPost,
+          position: recentPosts.length + 1,
+        });
+      }
       console.log(
         `[fb-target] Collected ${recentPosts.length}/${maxPostsToInspect} recent Fanpage posts.`,
       );
@@ -731,26 +816,49 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     await wait(randomInt(1200, 2400));
   }
 
-  if (recentPosts.length === 0) {
-    reportStep('fb_flow_failed', 'Không thu thập được bài Facebook có permalink hợp lệ');
-    throw new Error('[FB_POST_NOT_FOUND] Không thu thập được bài Facebook có permalink hợp lệ');
+  if (recentPosts.length < maxPostsToInspect) {
+    reportStep(
+      'fb_flow_failed',
+      `Bộ đếm chỉ nhận được ${recentPosts.length}/${maxPostsToInspect} bài Facebook`,
+    );
+    throw new Error(
+      `[FB_POST_COUNT_REQUIRED] Bộ đếm chỉ nhận được ${recentPosts.length}/${maxPostsToInspect} bài Facebook`,
+    );
   }
 
-  const targetPostIndex = randomInt(1, recentPosts.length);
-  const selectedPostInfo = recentPosts[targetPostIndex - 1];
+  const eligiblePosts = recentPosts.filter(
+    (post) => post.permalinkUrl && post.hasSeeMore && post.hasDermaLink,
+  );
+  if (eligiblePosts.length === 0) {
+    reportStep(
+      'fb_flow_failed',
+      'Đã đếm đủ 10 bài nhưng không có bài nào đồng thời có Xem thêm và link Derma',
+    );
+    throw new Error(
+      '[FB_ELIGIBLE_POST_REQUIRED] Không có bài nào trong 10 bài đầu đồng thời có Xem thêm và link Derma',
+    );
+  }
+
+  const selectedPostInfo = eligiblePosts[randomInt(0, eligiblePosts.length - 1)];
+  const targetPostIndex = selectedPostInfo.position;
   console.log(
-    `[fb-target] Random selected post ${targetPostIndex}/${recentPosts.length}: ${selectedPostInfo.permalinkUrl}`,
+    `[fb-target] Random selected eligible post ${targetPostIndex}/${recentPosts.length}: ${selectedPostInfo.permalinkUrl}`,
   );
   reportStep('fb_random_position', {
     targetPostIndex,
     maxPosts: recentPosts.length,
+    candidateCount: eligiblePosts.length,
   });
 
   await activePage.goto(selectedPostInfo.permalinkUrl, {
     waitUntil: 'domcontentloaded',
     timeout: 35000,
   });
-  const selectedPost = await waitForPrimaryPost(activePage);
+  const selectedPost = await waitForSelectedPost(
+    activePage,
+    selectedPostInfo.permalinkUrl,
+    config.targetDomain,
+  );
   if (!selectedPost) {
     reportStep('fb_flow_failed', `Không mở lại được bài ngẫu nhiên số ${targetPostIndex}`);
     throw new Error(

@@ -854,13 +854,15 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                 statusLines.search = `🟢 Đã vào Fanpage Khải Hoàn Derma`;
             }
             else if (currentStep === 'fb_target_start') {
-                statusLines.rank = `🔵 Đang thu thập tối đa 10 bài mới nhất trên Fanpage...`;
+                statusLines.rank = `🔵 Bộ đếm đang đọc đủ 10 bài đầu tiên trên Fanpage...`;
             }
             else if (currentStep === 'fb_random_position') {
-                statusLines.rank = `🔵 Đã chọn ngẫu nhiên bài số ${detail?.targetPostIndex || 1}/${detail?.maxPosts || 10}`;
+                statusLines.rank =
+                    `🔵 Đã đếm đủ 10 bài; chọn bài số ${detail?.targetPostIndex || 1}/` +
+                        `${detail?.maxPosts || 10} trong ${detail?.candidateCount || 1} bài hợp lệ`;
             }
             else if (currentStep === 'fb_post_reading') {
-                statusLines.rank = `🔵 Đã thu thập ${detail?.postNum || 1}/${detail?.maxPosts || 10} bài mới nhất...`;
+                statusLines.rank = `🔵 Bộ đếm: ${detail?.postNum || 1}/${detail?.maxPosts || 10} bài đầu tiên...`;
             }
             else if (currentStep === 'fb_see_more_clicking') {
                 statusLines.rank = `🔵 Đang bấm Xem thêm trong bài được chọn...`;
