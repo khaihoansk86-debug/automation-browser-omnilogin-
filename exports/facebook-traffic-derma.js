@@ -4,7 +4,8 @@ const DEFAULTS = {
   targetBaseUrl: 'https://khaihoanderma.com/',
   fbWarmupMinSeconds: 120,
   fbWarmupMaxSeconds: 180,
-  targetWebSessionSeconds: 240, // 4 minutes on website
+  targetWebMinSeconds: 120, // 2 minutes
+  targetWebMaxSeconds: 240, // 4 minutes
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\facebook-traffic-derma-output.json',
 };
 
@@ -401,12 +402,13 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   }
 
   // ----------------------------------------------------
-  // Phase 4: Target Website Interaction (4 Minutes / 240s)
+  // Phase 4: Target Website Interaction (Random 2 - 4 Minutes / 120 - 240s)
   // ----------------------------------------------------
-  console.log('[web-audit] Starting 4-minute natural interaction on target website...');
-  reportStep('web_audit_start', 'Đang lướt đọc bài, xem sản phẩm & giỏ hàng (4 phút)...');
+  const targetWebSeconds = randomInt(config.targetWebMinSeconds, config.targetWebMaxSeconds);
+  console.log(`[web-audit] Starting ${targetWebSeconds}-second natural interaction on target website...`);
+  reportStep('web_audit_start', `Đang lướt đọc bài, xem sản phẩm & giỏ hàng (${targetWebSeconds}s)...`);
 
-  const webDurationMs = config.targetWebSessionSeconds * 1000;
+  const webDurationMs = targetWebSeconds * 1000;
   const webDeadline = Date.now() + webDurationMs;
   const webStartedAt = Date.now();
 
@@ -418,7 +420,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
 
   while (remainingMs(webDeadline) > 0) {
     const elapsedSec = Math.floor((Date.now() - webStartedAt) / 1000);
-    const totalSec = config.targetWebSessionSeconds;
+    const totalSec = targetWebSeconds;
     reportStep('web_audit_reading', { elapsed: elapsedSec, total: totalSec, url: await activePage.url().catch(() => '') });
 
     // Scroll & View Content
@@ -481,7 +483,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
   }
 
-  reportStep('web_audit_done', 'Hoàn tất 4 phút lướt đọc bài & tương tác Website!');
+  reportStep('web_audit_done', `Hoàn tất ${targetWebSeconds}s lướt đọc bài & tương tác Website!`);
   return {
     targetWebOpened,
     addedToCart,
@@ -500,7 +502,8 @@ async function main() {
     targetBaseUrl: String(param('targetBaseUrl') || DEFAULTS.targetBaseUrl),
     fbWarmupMinSeconds: Number(param('fbWarmupMinSeconds') || DEFAULTS.fbWarmupMinSeconds),
     fbWarmupMaxSeconds: Number(param('fbWarmupMaxSeconds') || DEFAULTS.fbWarmupMaxSeconds),
-    targetWebSessionSeconds: Number(param('targetWebSessionSeconds') || DEFAULTS.targetWebSessionSeconds),
+    targetWebMinSeconds: Number(param('targetWebMinSeconds') || DEFAULTS.targetWebMinSeconds),
+    targetWebMaxSeconds: Number(param('targetWebMaxSeconds') || DEFAULTS.targetWebMaxSeconds),
     exportPath: String(param('exportPath') || DEFAULTS.exportPath),
   };
 
@@ -514,8 +517,8 @@ async function main() {
   const searchDeadline = Date.now() + 60000;
   await searchFacebookPage(config.fbSearchQuery, searchDeadline);
 
-  // Phase 3 & 4: Fanpage Link Click & Website Session (4 minutes / 240s)
-  const globalDeadline = Date.now() + (config.targetWebSessionSeconds + 120) * 1000;
+  // Phase 3 & 4: Fanpage Link Click & Website Session (Random 2 - 4 minutes)
+  const globalDeadline = Date.now() + (config.targetWebMaxSeconds + 180) * 1000;
   const auditStats = await auditFanpageAndWebsite(config, globalDeadline);
 
   const finalOutput = {
