@@ -443,13 +443,22 @@ async function findExactSeeMoreControl(post) {
   return null;
 }
 
-async function positionSelectedPostContent(activePage, postKey) {
+async function positionSelectedPostContent(activePage, postKey, fallbackPost) {
   reportStep('fb_positioning_post', 'Đang cuộn lên phần nội dung của bài được chọn');
   try {
     let post = await reacquireSelectedPost(activePage, postKey);
+    if (!post && fallbackPost && await isVisibleSafe(fallbackPost)) {
+      post = fallbackPost;
+      await post
+        .evaluate((element) => {
+          element.setAttribute('data-omni-fb-selected-post', 'true');
+        })
+        .catch(() => {});
+    }
     if (!post) return null;
 
     await post.evaluate((element) => {
+      element.setAttribute('data-omni-fb-selected-post', 'true');
       const desiredTop = 155;
       const currentTop = element.getBoundingClientRect().top;
       const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
@@ -467,7 +476,14 @@ async function positionSelectedPostContent(activePage, postKey) {
       }
     }
 
-    post = await reacquireSelectedPost(activePage, postKey);
+    const markedPost = activePage
+      .locator('[data-omni-fb-selected-post="true"]')
+      .first();
+    if (await isVisibleSafe(markedPost)) {
+      post = markedPost;
+    } else {
+      post = await reacquireSelectedPost(activePage, postKey) || post;
+    }
     return post;
   } catch (err) {
     console.log('[fb-target] positionSelectedPostContent error:', err.message || String(err));
@@ -1088,14 +1104,60 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     targetPostIndex,
     maxPosts: maxPostsToInspect,
   });
-  const positionedPost = await positionSelectedPostContent(activePage, selectedPost.key);
+  await selectedPost.article
+    .evaluate((element) => {
+      element.setAttribute('data-omni-fb-selected-post', 'true');
+    })
+    .catch(() => {});
+  let positionedPost = await positionSelectedPostContent(
+    activePage,
+    selectedPost.key,
+    selectedPost.article,
+  );
 
-  const expandedResult = await expandSeeMoreInPost(
+  let expandedResult = await expandSeeMoreInPost(
     activePage,
     selectedPost.key,
     positionedPost,
     config.targetDomain,
   );
+  if (!expandedResult) {
+    const recoveryPosts = await collectPageArticles(activePage, new Set(), 10);
+    const recoveryPool = recoveryPosts
+      .filter((item) => item.key !== selectedPost.key)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3);
+
+    for (const recoveryPost of recoveryPool) {
+      reportStep(
+        'fb_post_recovery',
+        'Bài đã chọn vừa được Facebook tải lại, đang chuyển sang bài có Xem thêm',
+      );
+      await recoveryPost.article
+        .evaluate((element) => {
+          document
+            .querySelectorAll('[data-omni-fb-selected-post]')
+            .forEach((item) => item.removeAttribute('data-omni-fb-selected-post'));
+          element.setAttribute('data-omni-fb-selected-post', 'true');
+        })
+        .catch(() => {});
+      positionedPost = await positionSelectedPostContent(
+        activePage,
+        recoveryPost.key,
+        recoveryPost.article,
+      );
+      expandedResult = await expandSeeMoreInPost(
+        activePage,
+        recoveryPost.key,
+        positionedPost,
+        config.targetDomain,
+      );
+      if (expandedResult) {
+        selectedPost = recoveryPost;
+        break;
+      }
+    }
+  }
   if (!expandedResult) {
     reportStep('fb_flow_failed', `Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
     throw new Error(`[FB_SEE_MORE_REQUIRED] Không bấm mở được Xem thêm ở bài số ${targetPostIndex}`);
