@@ -372,7 +372,9 @@ function safeGetPages(pg) {
 async function findAndClickPostWebsiteLink(activePage, targetDomain) {
   try {
     const linkLocatorInfo = await activePage.evaluate((domain) => {
-      const anchors = Array.from(document.querySelectorAll('a[href]'));
+      // Chỉ tìm link trong khu vực bài đăng chính (bỏ qua sidebar bên trái/phải)
+      const feedContainer = document.querySelector('div[role="main"], div[role="feed"]') || document;
+      const anchors = Array.from(feedContainer.querySelectorAll('a[href]'));
       const vh = window.innerHeight || document.documentElement.clientHeight;
       
       // Filter for links that are at least partially in the viewport
