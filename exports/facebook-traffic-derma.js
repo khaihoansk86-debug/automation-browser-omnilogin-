@@ -769,8 +769,22 @@ async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
   await anchor.evaluate((element, safeUrl) => {
     element.setAttribute('href', safeUrl);
     element.setAttribute('target', '_self');
+    element.setAttribute('data-omni-fb-target-link', 'true');
   }, destinationUrl);
-  await anchor.click();
+
+  await anchor.scrollIntoViewIfNeeded().catch(() => {});
+  const anchorBox = await anchor.boundingBox().catch(() => null);
+  reportStep('fb_target_link_clicking', 'Đang bấm link sản phẩm Khải Hoàn Derma');
+  if (anchorBox) {
+    await page.mouse
+      .click(
+        anchorBox.x + anchorBox.width / 2,
+        anchorBox.y + anchorBox.height / 2,
+      )
+      .catch(() => {});
+  } else {
+    await anchor.evaluate((element) => element.click()).catch(() => {});
+  }
   await wait(1200);
 
   const afterPages = await page.browser.pages().catch(() => ({ pages: [] }));
@@ -789,11 +803,39 @@ async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
     }).catch(() => {});
   }
 
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 35000) {
+  let startedAt = Date.now();
+  while (Date.now() - startedAt < 8000) {
     const currentUrl = await page.url().catch(() => '');
     if (sameTargetResource(currentUrl, destinationUrl, targetDomain)) return currentUrl;
-    await wait(500);
+    await wait(300);
+  }
+
+  if ((await page.url().catch(() => '')) === originalUrl) {
+    console.log('[one-tab] Facebook swallowed the pointer click; retrying the marked link.');
+    await page
+      .locator('[data-omni-fb-target-link="true"]')
+      .evaluate((element) => element.click())
+      .catch(() => {});
+    startedAt = Date.now();
+    while (Date.now() - startedAt < 3500) {
+      const currentUrl = await page.url().catch(() => '');
+      if (sameTargetResource(currentUrl, destinationUrl, targetDomain)) return currentUrl;
+      await wait(250);
+    }
+  }
+
+  console.log('[one-tab] Facebook did not navigate; opening the extracted product URL in the same tab.');
+  reportStep('fb_target_link_fallback', 'Facebook chưa chuyển trang, đang mở URL sản phẩm trong cùng tab');
+  await page.goto(destinationUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: 35000,
+  }).catch(() => {});
+
+  startedAt = Date.now();
+  while (Date.now() - startedAt < 20000) {
+    const currentUrl = await page.url().catch(() => '');
+    if (sameTargetResource(currentUrl, destinationUrl, targetDomain)) return currentUrl;
+    await wait(300);
   }
 
   return '';
