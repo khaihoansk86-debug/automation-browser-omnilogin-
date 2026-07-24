@@ -396,10 +396,10 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
 
         const key = `omni-fb-${(hash >>> 0).toString(16)}`;
         postRoot.setAttribute('data-omni-fb-post-key', key);
-        const box = postRoot.getBoundingClientRect();
+        const postBox = postRoot.getBoundingClientRect();
         roots.push({
           key,
-          documentTop: Math.round(box.top + window.scrollY),
+          documentTop: Math.round(postBox.top + window.scrollY),
         });
       }
 
