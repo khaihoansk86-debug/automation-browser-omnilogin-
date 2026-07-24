@@ -457,14 +457,13 @@ async function positionSelectedPostContent(activePage, postKey, fallbackPost) {
     }
     if (!post) return null;
 
-    await post.evaluate((element) => {
-      element.setAttribute('data-omni-fb-selected-post', 'true');
-      const desiredTop = 155;
-      const currentTop = element.getBoundingClientRect().top;
-      const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
-      window.scrollTo({ top: destination, behavior: 'smooth' });
-    });
-    await wait(1400);
+    await post
+      .evaluate((element) => {
+        element.setAttribute('data-omni-fb-selected-post', 'true');
+      })
+      .catch(() => {});
+    await post.scrollIntoViewIfNeeded().catch(() => {});
+    await wait(700);
 
     const postBox = await post.boundingBox().catch(() => null);
     if (postBox && (postBox.y < 70 || postBox.y > 320)) {
@@ -521,13 +520,8 @@ async function expandSeeMoreInPost(
         continue;
       }
 
-      await selected.evaluate((element) => {
-        const desiredTop = 225;
-        const currentTop = element.getBoundingClientRect().top;
-        const destination = Math.max(0, window.scrollY + currentTop - desiredTop);
-        window.scrollTo({ top: destination, behavior: 'smooth' });
-      }).catch(() => {});
-      await wait(800);
+      await selected.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(500);
 
       post = await reacquireSelectedPost(activePage, postKey) || post;
       selected = await findExactSeeMoreControl(post);
@@ -778,66 +772,74 @@ async function findSelectedPostWebsiteLink(activePage, post, targetDomain) {
 
 async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
   const originalUrl = await page.url().catch(() => '');
-  const beforePages = await page.browser.pages();
+  const beforePages = await page.browser.pages().catch(() => ({ pages: [] }));
   const beforeIds = new Set(beforePages.pages.map((item) => item.targetId));
   const originalPage = beforePages.pages.find((item) => item.url === originalUrl);
 
-  await anchor.evaluate((element, safeUrl) => {
-    element.setAttribute('href', safeUrl);
-    element.setAttribute('target', '_self');
-    element.setAttribute('data-omni-fb-target-link', 'true');
-  }, destinationUrl);
-
-  await anchor.scrollIntoViewIfNeeded().catch(() => {});
-  const anchorBox = await anchor.boundingBox().catch(() => null);
-  reportStep('fb_target_link_clicking', 'Đang bấm link sản phẩm Khải Hoàn Derma');
-  if (anchorBox) {
-    await page.mouse
-      .click(
-        anchorBox.x + anchorBox.width / 2,
-        anchorBox.y + anchorBox.height / 2,
-      )
-      .catch(() => {});
-  } else {
-    await anchor.evaluate((element) => element.click()).catch(() => {});
-  }
-  await wait(1200);
-
-  const afterPages = await page.browser.pages().catch(() => ({ pages: [] }));
-  const createdPages = afterPages.pages.filter((item) => !beforeIds.has(item.targetId));
-  if (createdPages.length > 0) {
-    console.log(`[one-tab] Click created ${createdPages.length} extra tab(s); closing only those new tabs.`);
-    for (const createdPage of createdPages) {
-      await page.browser.closePage(createdPage.targetId).catch(() => {});
+  let anchorPrepared = false;
+  try {
+    await anchor.evaluate((element, safeUrl) => {
+      element.setAttribute('href', safeUrl);
+      element.setAttribute('target', '_self');
+      element.setAttribute('data-omni-fb-target-link', 'true');
+    }, destinationUrl);
+    await anchor.scrollIntoViewIfNeeded().catch(() => {});
+    const anchorBox = await anchor.boundingBox().catch(() => null);
+    reportStep('fb_target_link_clicking', 'Đang bấm link sản phẩm Khải Hoàn Derma');
+    if (anchorBox) {
+      await page.mouse
+        .click(
+          anchorBox.x + anchorBox.width / 2,
+          anchorBox.y + anchorBox.height / 2,
+        )
+        .catch(() => {});
+    } else {
+      await anchor.evaluate((element) => element.click()).catch(() => {});
     }
-    if (originalPage) {
-      await page.browser.bringToFront(originalPage.targetId).catch(() => {});
-    }
-    await page.goto(destinationUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 35000,
-    }).catch(() => {});
+    anchorPrepared = true;
+  } catch (error) {
+    console.log(
+      '[one-tab] Facebook detached the product link before click:',
+      error.message || String(error),
+    );
   }
+  if (anchorPrepared) await wait(1200);
 
   let startedAt = Date.now();
-  while (Date.now() - startedAt < 8000) {
+  const clickNavigationTimeout = anchorPrepared ? 8000 : 0;
+  while (Date.now() - startedAt < clickNavigationTimeout) {
+    const tabs = await page.browser.pages().catch(() => ({ pages: [] }));
+    const destinationPage = tabs.pages.find((item) =>
+      sameTargetResource(item.url, destinationUrl, targetDomain)
+    );
+    if (destinationPage) {
+      await page.browser.bringToFront(destinationPage.targetId).catch(() => {});
+      for (const tab of tabs.pages) {
+        const createdByClick = !beforeIds.has(tab.targetId);
+        const oldFacebookTab = originalPage && tab.targetId === originalPage.targetId;
+        if (
+          tab.targetId !== destinationPage.targetId &&
+          (createdByClick || oldFacebookTab)
+        ) {
+          await page.browser.closePage(tab.targetId).catch(() => {});
+        }
+      }
+      return destinationPage.url;
+    }
+
     const currentUrl = await page.url().catch(() => '');
     if (sameTargetResource(currentUrl, destinationUrl, targetDomain)) return currentUrl;
     await wait(300);
   }
 
-  if ((await page.url().catch(() => '')) === originalUrl) {
-    console.log('[one-tab] Facebook swallowed the pointer click; retrying the marked link.');
-    await page
-      .locator('[data-omni-fb-target-link="true"]')
-      .evaluate((element) => element.click())
-      .catch(() => {});
-    startedAt = Date.now();
-    while (Date.now() - startedAt < 3500) {
-      const currentUrl = await page.url().catch(() => '');
-      if (sameTargetResource(currentUrl, destinationUrl, targetDomain)) return currentUrl;
-      await wait(250);
+  const tabsAfterClick = await page.browser.pages().catch(() => ({ pages: [] }));
+  for (const tab of tabsAfterClick.pages) {
+    if (!beforeIds.has(tab.targetId)) {
+      await page.browser.closePage(tab.targetId).catch(() => {});
     }
+  }
+  if (originalPage) {
+    await page.browser.bringToFront(originalPage.targetId).catch(() => {});
   }
 
   console.log('[one-tab] Facebook did not navigate; opening the extracted product URL in the same tab.');
@@ -854,18 +856,40 @@ async function clickAnchorInCurrentTab(anchor, destinationUrl, targetDomain) {
     await wait(300);
   }
 
+  console.log('[one-tab] Same-tab navigation failed; replacing the Facebook tab with a target tab.');
+  const replacement = await page.browser
+    .newPage(destinationUrl, { active: true })
+    .catch(() => null);
+  if (replacement) {
+    startedAt = Date.now();
+    while (Date.now() - startedAt < 20000) {
+      const tabs = await page.browser.pages().catch(() => ({ pages: [] }));
+      const destinationPage = tabs.pages.find((item) =>
+        sameTargetResource(item.url, destinationUrl, targetDomain)
+      );
+      if (destinationPage) {
+        await page.browser.bringToFront(destinationPage.targetId).catch(() => {});
+        if (originalPage && originalPage.targetId !== destinationPage.targetId) {
+          await page.browser.closePage(originalPage.targetId).catch(() => {});
+        }
+        return destinationPage.url;
+      }
+      await wait(300);
+    }
+  }
+
   return '';
 }
 
 async function findInternalLink(activePage, targetDomain, currentUrl, mode, visitedUrls) {
   const selectors = mode === 'related'
     ? [
+        '.related.related-products-wrapper a[href]',
+        '.related-products-wrapper a[href]',
         'section.related a[href]',
         '.related a[href]',
         '.related.products a[href]',
         '[class*="related-product"] a[href]',
-        'section:has-text("SẢN PHẨM TƯƠNG TỰ") a[href]',
-        'section:has-text("Sản phẩm tương tự") a[href]',
       ]
     : [
         'main a[href]',
@@ -873,11 +897,26 @@ async function findInternalLink(activePage, targetDomain, currentUrl, mode, visi
         '.content-area a[href]',
         '.page-wrapper a[href]',
       ];
+
+  if (mode === 'related') {
+    const relatedSection = activePage
+      .locator(
+        '.related.related-products-wrapper, .related-products-wrapper, ' +
+        'section.related, .related.products, [class*="related-product"]',
+      )
+      .first();
+    if ((await relatedSection.count().catch(() => 0)) > 0) {
+      await relatedSection.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(800);
+    }
+  }
+
   const anchors = await activePage.locator(selectors.join(', ')).all();
   const candidates = [];
+  const candidateUrls = new Set();
 
   for (const anchor of anchors) {
-    if (!(await anchor.isVisible().catch(() => false))) continue;
+    if (mode !== 'related' && !(await anchor.isVisible().catch(() => false))) continue;
     const href = (await anchor.getAttribute('href').catch(() => '')) || '';
     let absoluteHref = '';
     try {
@@ -924,6 +963,8 @@ async function findInternalLink(activePage, targetDomain, currentUrl, mode, visi
       continue;
     }
 
+    if (candidateUrls.has(destinationUrl)) continue;
+    candidateUrls.add(destinationUrl);
     candidates.push({
       anchor,
       destinationUrl,
