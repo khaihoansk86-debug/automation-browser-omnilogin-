@@ -30,6 +30,15 @@ function randomInt(min, max) {
   return low + Math.floor(Math.random() * (high - low + 1));
 }
 
+function shuffled(items) {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index--) {
+    const swapIndex = randomInt(0, index);
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy;
+}
+
 function remainingMs(deadline) {
   return Math.max(0, deadline - Date.now());
 }
@@ -299,6 +308,43 @@ async function searchFacebookPage(query, deadline) {
   return true;
 }
 
+function normalizeFacebookPermalink(value) {
+  try {
+    const parsed = new URL(value, 'https://www.facebook.com/');
+    const isFacebook =
+      parsed.hostname === 'facebook.com' || parsed.hostname.endsWith('.facebook.com');
+    if (!isFacebook || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) return '';
+
+    const storyId = parsed.searchParams.get('story_fbid');
+    const ownerId = parsed.searchParams.get('id');
+    parsed.hash = '';
+    parsed.search = '';
+    if (storyId) {
+      parsed.searchParams.set('story_fbid', storyId);
+      if (ownerId) parsed.searchParams.set('id', ownerId);
+    }
+    return parsed.href;
+  } catch {
+    return '';
+  }
+}
+
+async function getPostIdentity(article) {
+  const text = (await article.innerText().catch(() => '')).trim();
+  const permalink = article
+    .locator(
+      'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/videos/"], ' +
+      'a[href*="/reel/"], a[href*="story_fbid="]',
+    )
+    .first();
+  const permalinkHref = (await permalink.getAttribute('href').catch(() => '')) || '';
+  const permalinkUrl = normalizeFacebookPermalink(permalinkHref);
+  return {
+    key: permalinkUrl || text.replace(/\s+/g, ' ').slice(0, 220),
+    permalinkUrl,
+  };
+}
+
 async function getVisiblePost(activePage, seenPostKeys) {
   try {
     const articles = await activePage
@@ -312,21 +358,13 @@ async function getVisiblePost(activePage, seenPostKeys) {
       const box = await article.boundingBox().catch(() => null);
       if (!box || box.width < 250 || box.height < 120) continue;
 
-      const text = (await article.innerText().catch(() => '')).trim();
-      const permalink = article
-        .locator(
-          'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/videos/"], ' +
-          'a[href*="/reel/"], a[href*="story_fbid="]',
-        )
-        .first();
-      const permalinkHref = (await permalink.getAttribute('href').catch(() => '')) || '';
-      const key = permalinkHref || text.replace(/\s+/g, ' ').slice(0, 220);
+      const { key, permalinkUrl } = await getPostIdentity(article);
       if (!key || seenPostKeys.has(key)) continue;
 
       const centerY = box.y + box.height / 2;
       const distance = Math.abs(centerY - 360);
       if (distance < bestDistance) {
-        best = { article, key };
+        best = { article, key, permalinkUrl };
         bestDistance = distance;
       }
     }
@@ -336,6 +374,18 @@ async function getVisiblePost(activePage, seenPostKeys) {
     console.log('[fb-target] getVisiblePost error:', err.message || String(err));
     return null;
   }
+}
+
+async function findPostByKey(activePage, expectedKey) {
+  const articles = await activePage
+    .locator('div[role="feed"] div[role="article"], div[role="main"] div[role="article"]')
+    .all();
+  for (const article of articles) {
+    if (!(await article.isVisible().catch(() => false))) continue;
+    const identity = await getPostIdentity(article);
+    if (identity.key === expectedKey) return article;
+  }
+  return null;
 }
 
 async function expandSeeMoreInPost(post) {
@@ -374,6 +424,23 @@ function normalizeTargetUrl(value, targetDomain) {
   return '';
 }
 
+function sameTargetResource(left, right, targetDomain) {
+  const leftUrl = normalizeTargetUrl(left, targetDomain);
+  const rightUrl = normalizeTargetUrl(right, targetDomain);
+  if (!leftUrl || !rightUrl) return false;
+
+  const normalizePath = (value) => {
+    const parsed = new URL(value);
+    const path = parsed.pathname.replace(/\/+$/, '') || '/';
+    try {
+      return decodeURIComponent(path).toLowerCase();
+    } catch {
+      return path.toLowerCase();
+    }
+  };
+  return normalizePath(leftUrl) === normalizePath(rightUrl);
+}
+
 function resolveFacebookOutboundUrl(href, targetDomain) {
   try {
     const parsed = new URL(href, 'https://www.facebook.com/');
@@ -395,19 +462,22 @@ async function findPostWebsiteLink(post, targetDomain) {
       if (!(await anchor.isVisible().catch(() => false))) continue;
       const href = await anchor.getAttribute('href').catch(() => '');
       const text = (await anchor.innerText().catch(() => '')).trim();
+      const normalizedText = text.toLowerCase();
       const destinationUrl = resolveFacebookOutboundUrl(href || '', targetDomain);
-      if (!destinationUrl && !text.toLowerCase().includes('derma')) continue;
+      const hasDermaLabel =
+        normalizedText.includes('khaihoanderma') || normalizedText.includes('derma');
+      if (!destinationUrl || !hasDermaLabel) continue;
 
-      const resolvedUrl = destinationUrl || resolveFacebookOutboundUrl(text, targetDomain);
-      if (!resolvedUrl) continue;
+      const parsedDestination = new URL(destinationUrl);
+      if (parsedDestination.pathname.replace(/\/+$/, '') === '') continue;
 
       await anchor.scrollIntoViewIfNeeded().catch(() => {});
       return {
         success: true,
         anchor,
-        href: href || resolvedUrl,
-        destinationUrl: resolvedUrl,
-        text: text || resolvedUrl,
+        href: href || destinationUrl,
+        destinationUrl,
+        text: text || destinationUrl,
       };
     }
   } catch (err) {
@@ -418,7 +488,7 @@ async function findPostWebsiteLink(post, targetDomain) {
 
 async function clickLinkInCurrentTab(anchor, destinationUrl, targetDomain) {
   const originalUrl = await page.url().catch(() => '');
-  const beforePages = await page.browser.pages().catch(() => ({ pages: [] }));
+  const beforePages = await page.browser.pages();
   const beforeIds = new Set(beforePages.pages.map((item) => item.targetId));
   const originalPage = beforePages.pages.find((item) => item.url === originalUrl);
 
@@ -448,7 +518,7 @@ async function clickLinkInCurrentTab(anchor, destinationUrl, targetDomain) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 35000) {
     const currentUrl = await page.url().catch(() => '');
-    if (normalizeTargetUrl(currentUrl, targetDomain)) return currentUrl;
+    if (sameTargetResource(currentUrl, destinationUrl, targetDomain)) return currentUrl;
     await wait(500);
   }
 
@@ -466,17 +536,15 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   let activePage = page;
   let clickedLinkInfo = null;
 
-  // Step 3: Inspect up to 12 recent posts, then open one Derma link in the current tab.
+  // Step 3a: collect up to 12 unique recent posts without leaving the Fanpage.
   const maxPostsToInspect = 12;
-  const targetPostIndex = randomInt(1, maxPostsToInspect);
   const seenPostKeys = new Set();
+  const recentPosts = [];
   let inspectedPostCount = 0;
   let scanAttempts = 0;
 
-  console.log(`[fb-target] Selected post position ${targetPostIndex}/${maxPostsToInspect} as the first link candidate.`);
-
   while (inspectedPostCount < maxPostsToInspect && scanAttempts < maxPostsToInspect * 3) {
-    if (targetWebOpened || remainingMs(globalDeadline) <= 60000) break;
+    if (remainingMs(globalDeadline) <= 60000) break;
     scanAttempts++;
 
     const visiblePost = await getVisiblePost(activePage, seenPostKeys);
@@ -487,45 +555,75 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
     }
 
     seenPostKeys.add(visiblePost.key);
+    recentPosts.push({
+      key: visiblePost.key,
+      permalinkUrl: visiblePost.permalinkUrl,
+    });
     inspectedPostCount++;
-    console.log(`[fb-target] Inspecting Fanpage post ${inspectedPostCount}/${maxPostsToInspect}...`);
+    console.log(`[fb-target] Collected Fanpage post ${inspectedPostCount}/${maxPostsToInspect}.`);
     reportStep('fb_post_reading', {
       postNum: inspectedPostCount,
       maxPosts: maxPostsToInspect,
     });
-
-    if (inspectedPostCount === targetPostIndex) {
-      await expandSeeMoreInPost(visiblePost.article);
-      const linkResult = await findPostWebsiteLink(visiblePost.article, config.targetDomain);
-      if (linkResult.success) {
-        clickedLinkInfo = {
-          href: linkResult.href,
-          destinationUrl: linkResult.destinationUrl,
-          text: linkResult.text,
-        };
-        console.log(`[fb-target] Clicking selected post link in the current tab: ${linkResult.destinationUrl}`);
-        reportStep('fb_link_found', `Đã tìm thấy link ${config.targetDomain} trong bài đăng được chọn`);
-        const openedUrl = await clickLinkInCurrentTab(
-          linkResult.anchor,
-          linkResult.destinationUrl,
-          config.targetDomain,
-        ).catch(() => '');
-        targetWebOpened = Boolean(openedUrl);
-        break;
-      }
-
-      console.log('[fb-target] The randomly selected post does not contain a Derma link.');
-      break;
-    }
 
     if (Math.random() < 0.65) await moveMouseNaturally();
     await safeMouseWheel(0, randomInt(380, 750));
     await wait(randomInt(2500, 4500));
   }
 
+  // Step 3b: choose randomly among the collected posts and test each candidate
+  // until one exposes a valid Derma product link.
+  const selectablePosts = shuffled(recentPosts.filter((item) => item.permalinkUrl));
+  console.log(`[fb-target] Collected ${recentPosts.length} recent posts; ${selectablePosts.length} have usable permalinks.`);
+
+  for (let candidateIndex = 0; candidateIndex < selectablePosts.length; candidateIndex++) {
+    if (remainingMs(globalDeadline) <= 60000) break;
+    const candidate = selectablePosts[candidateIndex];
+    reportStep('fb_candidate_checking', {
+      candidateNum: candidateIndex + 1,
+      candidateTotal: selectablePosts.length,
+    });
+
+    await activePage.goto(candidate.permalinkUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 35000,
+    }).catch(() => {});
+    await wait(randomInt(1800, 3200));
+
+    const selectedPost = await findPostByKey(activePage, candidate.key);
+    if (!selectedPost) continue;
+
+    await expandSeeMoreInPost(selectedPost);
+    const linkResult = await findPostWebsiteLink(selectedPost, config.targetDomain);
+    if (!linkResult.success) continue;
+
+    clickedLinkInfo = {
+      href: linkResult.href,
+      destinationUrl: linkResult.destinationUrl,
+      text: linkResult.text,
+      sourcePostUrl: candidate.permalinkUrl,
+    };
+    console.log(`[fb-target] Clicking selected product link in the current tab: ${linkResult.destinationUrl}`);
+    reportStep('fb_link_clicking', `Đang nhấp link sản phẩm ${linkResult.destinationUrl}`);
+    const openedUrl = await clickLinkInCurrentTab(
+      linkResult.anchor,
+      linkResult.destinationUrl,
+      config.targetDomain,
+    ).catch(() => '');
+    targetWebOpened = sameTargetResource(
+      openedUrl,
+      linkResult.destinationUrl,
+      config.targetDomain,
+    );
+    if (targetWebOpened) {
+      reportStep('fb_link_found', `Đã nhấp đúng link sản phẩm ${linkResult.destinationUrl}`);
+      break;
+    }
+  }
+
   if (!targetWebOpened) {
-    console.log('[fb-target] No Derma link found in the randomly selected recent post; website QA was not started.');
-    reportStep('fb_link_not_found', `Bài được chọn trong tối đa 12 bài gần nhất không có link ${config.targetDomain}`);
+    console.log('[fb-target] No valid Derma product link found in the collected recent posts.');
+    reportStep('fb_link_not_found', `Không tìm thấy link sản phẩm ${config.targetDomain} trong ${recentPosts.length} bài gần nhất`);
     return {
       targetWebOpened: false,
       addedToCart: false,
@@ -543,7 +641,11 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   const currentWebUrl = await activePage.url().catch(() => '');
   const verifiedWebUrl = normalizeTargetUrl(currentWebUrl, config.targetDomain);
 
-  if (!verifiedWebUrl) {
+  if (
+    !verifiedWebUrl ||
+    !clickedLinkInfo ||
+    !sameTargetResource(verifiedWebUrl, clickedLinkInfo.destinationUrl, config.targetDomain)
+  ) {
     throw new Error(`Website QA refused a non-target URL: ${currentWebUrl}`);
   }
 
@@ -560,7 +662,7 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   let detailTabChecked = false;
   while (remainingMs(webDeadline) > 0) {
     const currentUrl = await activePage.url().catch(() => '');
-    if (!normalizeTargetUrl(currentUrl, config.targetDomain)) {
+    if (!sameTargetResource(currentUrl, clickedLinkInfo.destinationUrl, config.targetDomain)) {
       throw new Error(`Website QA left the allowed domain: ${currentUrl}`);
     }
 

@@ -857,13 +857,19 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                 statusLines.rank = `🔵 Kiểm tra tối đa 12 bài gần nhất & tìm link Derma...`;
             }
             else if (currentStep === 'fb_post_reading') {
-                statusLines.rank = `🔵 Kiểm tra bài ${detail?.postNum || 1}/${detail?.maxPosts || 12}...`;
+                statusLines.rank = `🔵 Đang thu thập bài ${detail?.postNum || 1}/${detail?.maxPosts || 12}...`;
+            }
+            else if (currentStep === 'fb_candidate_checking') {
+                statusLines.rank = `🔵 Đang chọn bài có link Derma (${detail?.candidateNum || 1}/${detail?.candidateTotal || 1})...`;
+            }
+            else if (currentStep === 'fb_link_clicking') {
+                statusLines.rank = `🔵 Đang nhấp link sản phẩm Derma trên bài được chọn...`;
             }
             else if (currentStep === 'fb_link_found') {
-                statusLines.rank = `🟢 Đã nhấp link Derma trên bài được chọn`;
+                statusLines.rank = `🟢 Đã nhấp đúng link sản phẩm Derma trên bài được chọn`;
             }
             else if (currentStep === 'fb_link_not_found') {
-                statusLines.rank = `🟠 Bài được chọn không có link Derma`;
+                statusLines.rank = `🟠 Không tìm thấy link Derma trong các bài đã thu thập`;
             }
             else if (currentStep === 'web_audit_start') {
                 statusLines.audit = `🔵 Đã xác minh domain, đang kiểm tra nội dung Website...`;
