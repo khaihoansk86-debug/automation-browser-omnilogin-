@@ -373,11 +373,11 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
         
         uniqueRoots.add(postRoot);
 
-        const seeMore = Array.from(postRoot.querySelectorAll('div[role="button"]'))
-          .find((element) => {
-            const text = (element.innerText || '').trim();
-            return text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th');
-          });
+        const seeMoreCandidates = Array.from(postRoot.querySelectorAll('div[role="button"], span, a'));
+        const seeMore = seeMoreCandidates.find((element) => {
+            const text = (element.textContent || '').trim();
+            return (text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th')) && text.length < 40;
+        });
           
         const links = Array.from(postRoot.querySelectorAll('a[href]'));
         const hasVisibleLink = links.some(a => {
@@ -464,12 +464,18 @@ async function reacquireSelectedPost(activePage, postKey) {
 }
 
 async function findExactSeeMoreControl(post) {
-  const controls = await post.locator('div[role="button"]').all();
-  for (const control of controls) {
-    const text = await control.evaluate(el => (el.textContent || '').trim()).catch(() => '');
-    if (text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th')) return control;
-  }
-  return null;
+  const handle = await post.evaluateHandle((postRoot) => {
+    const candidates = Array.from(postRoot.querySelectorAll('div[role="button"], span, a'));
+    let bestMatch = null;
+    for (const el of candidates) {
+      const text = (el.textContent || '').trim();
+      if ((text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th')) && text.length < 40) {
+         bestMatch = el;
+      }
+    }
+    return bestMatch;
+  });
+  return handle.asElement();
 }
 
 async function positionSelectedPostContent(activePage, postKey, fallbackPost) {
