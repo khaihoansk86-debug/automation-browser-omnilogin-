@@ -379,7 +379,24 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
             return text === 'Xem thêm' || text === 'See more';
           });
           
-        const hasVisibleLink = postRoot.querySelector('a[href*="khaihoanderma.com"], a[href*="facebook.com/l.php"]');
+        const links = Array.from(postRoot.querySelectorAll('a[href]'));
+        const hasVisibleLink = links.some(a => {
+          try {
+            let parsed = new URL(a.href);
+            if (
+              parsed.hostname === 'l.facebook.com' ||
+              parsed.hostname === 'lm.facebook.com' ||
+              (parsed.hostname.endsWith('.facebook.com') && parsed.pathname === '/l.php')
+            ) {
+              const u = parsed.searchParams.get('u');
+              if (!u) return false;
+              parsed = new URL(decodeURIComponent(u));
+            }
+            if (!parsed.hostname.includes('khaihoanderma.com')) return false;
+            if (parsed.pathname.replace(/\/+$/, '') === '') return false;
+            return true;
+          } catch(e) { return false; }
+        });
         
         if (!seeMore && !hasVisibleLink) continue;
 
