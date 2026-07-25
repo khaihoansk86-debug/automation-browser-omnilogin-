@@ -549,7 +549,7 @@ async function expandSeeMoreInPost(
         continue;
       }
 
-      await selected.scrollIntoViewIfNeeded().catch(() => {});
+      await selected.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
       await wait(500);
 
       post = await reacquireSelectedPost(activePage, postKey) || post;
@@ -590,11 +590,13 @@ async function expandSeeMoreInPost(
             seeMoreBox.y + seeMoreBox.height / 2 + jitterY,
           )
           .catch(() => {});
-      } else {
-        await selected
-          .evaluate((element) => element.click())
-          .catch(() => {});
       }
+      
+      // Fallback JS click to bypass any invisible overlay or sticky header interception
+      await wait(100);
+      await selected
+        .evaluate((element) => element.click())
+        .catch(() => {});
 
       let linkResult = { success: false };
       for (let linkAttempt = 1; linkAttempt <= 4; linkAttempt++) {
