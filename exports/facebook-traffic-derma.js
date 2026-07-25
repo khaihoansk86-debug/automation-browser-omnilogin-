@@ -4,8 +4,8 @@ const DEFAULTS = {
   targetBaseUrl: 'https://khaihoanderma.com/',
   fbWarmupMinSeconds: 60,  // 1 minute
   fbWarmupMaxSeconds: 120, // 2 minutes
-  targetWebMinSeconds: 240, // 4 minutes
-  targetWebMaxSeconds: 420, // 7 minutes
+  targetWebMinSeconds: 300, // 5 minutes
+  targetWebMaxSeconds: 600, // 10 minutes
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\facebook-traffic-derma-output.json',
 };
 
