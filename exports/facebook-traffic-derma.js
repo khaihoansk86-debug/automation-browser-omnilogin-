@@ -4,8 +4,8 @@ const DEFAULTS = {
   targetBaseUrl: 'https://khaihoanderma.com/',
   fbWarmupMinSeconds: 60,  // 1 minute
   fbWarmupMaxSeconds: 120, // 2 minutes
-  targetWebMinSeconds: 120, // 2 minutes
-  targetWebMaxSeconds: 240, // 4 minutes
+  targetWebMinSeconds: 240, // 4 minutes
+  targetWebMaxSeconds: 420, // 7 minutes
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\facebook-traffic-derma-output.json',
 };
 
@@ -379,7 +379,7 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
             return text === 'Xem thêm' || text === 'See more';
           });
           
-        const hasVisibleLink = postRoot.querySelector('a[href*="khaihoanderma.com"], a[href*="l.facebook.com/l.php?u=https%3A%2F%2Fkhaihoanderma.com"]');
+        const hasVisibleLink = postRoot.querySelector('a[href*="khaihoanderma.com"], a[href*="facebook.com/l.php"]');
         
         if (!seeMore && !hasVisibleLink) continue;
 
@@ -449,7 +449,7 @@ async function reacquireSelectedPost(activePage, postKey) {
 async function findExactSeeMoreControl(post) {
   const controls = await post.locator('div[role="button"]').all();
   for (const control of controls) {
-    const text = (await control.innerText().catch(() => '')).trim();
+    const text = await control.evaluate(el => (el.textContent || '').trim()).catch(() => '');
     if (text === 'Xem thêm' || text === 'See more') return control;
   }
   return null;
