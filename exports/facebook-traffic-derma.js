@@ -376,7 +376,7 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
         const seeMoreCandidates = Array.from(postRoot.querySelectorAll('div[role="button"], span, a'));
         const seeMore = seeMoreCandidates.find((element) => {
             const text = (element.textContent || '').trim();
-            return (text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th')) && text.length < 40;
+            return /^(\.{3}|…)?\s*(Xem thêm|See more|Xem th.m)$/i.test(text);
         });
           
         const links = Array.from(postRoot.querySelectorAll('a[href]'));
@@ -469,7 +469,7 @@ async function findExactSeeMoreControl(post) {
     let bestMatch = null;
     for (const el of candidates) {
       const text = (el.textContent || '').trim();
-      if ((text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th')) && text.length < 40) {
+      if (/^(\.{3}|…)?\s*(Xem thêm|See more|Xem th.m)$/i.test(text)) {
          bestMatch = el;
       }
     }
@@ -620,7 +620,7 @@ async function expandSeeMoreInPost(
           .locator('[data-omni-fb-see-more-target="true"]')
           .evaluate((element) => {
             const text = (element.textContent || '').trim();
-            return text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th');
+            return /^(\.{3}|…)?\s*(Xem thêm|See more|Xem th.m)$/i.test(text);
           })
           .catch(() => false);
 
