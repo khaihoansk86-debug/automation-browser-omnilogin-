@@ -376,7 +376,7 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
         const seeMore = Array.from(postRoot.querySelectorAll('div[role="button"]'))
           .find((element) => {
             const text = (element.innerText || '').trim();
-            return text === 'Xem thêm' || text === 'See more';
+            return text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th');
           });
           
         const links = Array.from(postRoot.querySelectorAll('a[href]'));
@@ -467,7 +467,7 @@ async function findExactSeeMoreControl(post) {
   const controls = await post.locator('div[role="button"]').all();
   for (const control of controls) {
     const text = await control.evaluate(el => (el.textContent || '').trim()).catch(() => '');
-    if (text === 'Xem thêm' || text === 'See more') return control;
+    if (text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th')) return control;
   }
   return null;
 }
@@ -614,7 +614,7 @@ async function expandSeeMoreInPost(
           .locator('[data-omni-fb-see-more-target="true"]')
           .evaluate((element) => {
             const text = (element.textContent || '').trim();
-            return text === 'Xem thêm' || text === 'See more';
+            return text.includes('Xem thêm') || text.includes('See more') || text.includes('Xem th');
           })
           .catch(() => false);
 
