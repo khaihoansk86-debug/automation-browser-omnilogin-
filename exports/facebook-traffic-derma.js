@@ -1149,19 +1149,29 @@ async function auditFanpageAndWebsite(config, globalDeadline) {
   }
 
   if (!selectedPost) {
-    reportStep(
-      'fb_flow_failed',
-      `Bộ đếm dừng ở ${countedPosts.length}/${targetPostIndex}, mục tiêu bốc được ${targetPostIndex}/10`,
-    );
-    throw new Error(
-      `[FB_TARGET_POST_NOT_REACHED] Bộ đếm dừng ở ${countedPosts.length}/${targetPostIndex}`,
-    );
+    if (countedPosts.length > 0) {
+      const fallbackIndex = randomInt(1, countedPosts.length);
+      selectedPost = countedPosts[fallbackIndex - 1];
+      console.log(`[fb-target] Target not reached. Fallback to random post ${fallbackIndex}/${countedPosts.length}`);
+      reportStep('fb_target_reached', {
+        targetPostIndex: fallbackIndex,
+        maxPosts: countedPosts.length,
+      });
+    } else {
+      reportStep(
+        'fb_flow_failed',
+        `Bộ đếm dừng ở 0/${targetPostIndex}, không tìm thấy bài nào có link.`,
+      );
+      throw new Error(
+        `[FB_TARGET_POST_NOT_REACHED] Bộ đếm dừng ở 0/${targetPostIndex}`,
+      );
+    }
+  } else {
+    reportStep('fb_target_reached', {
+      targetPostIndex,
+      maxPosts: maxPostsToInspect,
+    });
   }
-
-  reportStep('fb_target_reached', {
-    targetPostIndex,
-    maxPosts: maxPostsToInspect,
-  });
   await selectedPost.article
     .evaluate((element) => {
       element.setAttribute('data-omni-fb-selected-post', 'true');
