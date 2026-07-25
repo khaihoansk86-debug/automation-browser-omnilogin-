@@ -373,30 +373,13 @@ async function collectPageArticles(activePage, seenPostKeys, limit) {
         
         uniqueRoots.add(postRoot);
 
-        const seeMoreCandidates = Array.from(postRoot.querySelectorAll('div[role="button"], span, a'));
-        const seeMore = seeMoreCandidates.find((element) => {
-            const text = (element.textContent || '').trim();
-            return /^(\.{3}|…)?\s*(Xem thêm|See more|Xem th.m)$/i.test(text);
-        });
+        const seeMore = Array.from(postRoot.querySelectorAll('div[role="button"]'))
+          .find((element) => {
+            const text = (element.innerText || '').trim();
+            return text === 'Xem thêm' || text === 'See more';
+          });
           
-        const links = Array.from(postRoot.querySelectorAll('a[href]'));
-        const hasVisibleLink = links.some(a => {
-          try {
-            let parsed = new URL(a.href);
-            if (
-              parsed.hostname === 'l.facebook.com' ||
-              parsed.hostname === 'lm.facebook.com' ||
-              (parsed.hostname.endsWith('.facebook.com') && parsed.pathname === '/l.php')
-            ) {
-              const u = parsed.searchParams.get('u');
-              if (!u) return false;
-              parsed = new URL(decodeURIComponent(u));
-            }
-            if (!parsed.hostname.includes('khaihoanderma.com')) return false;
-            if (parsed.pathname.replace(/\/+$/, '') === '') return false;
-            return true;
-          } catch(e) { return false; }
-        });
+        const hasVisibleLink = postRoot.querySelector('a[href*="khaihoanderma.com"], a[href*="l.facebook.com/l.php?u=https%3A%2F%2Fkhaihoanderma.com"]');
         
         if (!seeMore && !hasVisibleLink) continue;
 
@@ -464,18 +447,12 @@ async function reacquireSelectedPost(activePage, postKey) {
 }
 
 async function findExactSeeMoreControl(post) {
-  const handle = await post.evaluateHandle((postRoot) => {
-    const candidates = Array.from(postRoot.querySelectorAll('div[role="button"], span, a'));
-    let bestMatch = null;
-    for (const el of candidates) {
-      const text = (el.textContent || '').trim();
-      if (/^(\.{3}|…)?\s*(Xem thêm|See more|Xem th.m)$/i.test(text)) {
-         bestMatch = el;
-      }
-    }
-    return bestMatch;
-  });
-  return handle.asElement();
+  const controls = await post.locator('div[role="button"]').all();
+  for (const control of controls) {
+    const text = (await control.innerText().catch(() => '')).trim();
+    if (text === 'Xem thêm' || text === 'See more') return control;
+  }
+  return null;
 }
 
 async function positionSelectedPostContent(activePage, postKey, fallbackPost) {
@@ -555,7 +532,7 @@ async function expandSeeMoreInPost(
         continue;
       }
 
-      await selected.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
+      await selected.scrollIntoViewIfNeeded().catch(() => {});
       await wait(500);
 
       post = await reacquireSelectedPost(activePage, postKey) || post;
@@ -596,13 +573,11 @@ async function expandSeeMoreInPost(
             seeMoreBox.y + seeMoreBox.height / 2 + jitterY,
           )
           .catch(() => {});
+      } else {
+        await selected
+          .evaluate((element) => element.click())
+          .catch(() => {});
       }
-      
-      // Fallback JS click to bypass any invisible overlay or sticky header interception
-      await wait(100);
-      await selected
-        .evaluate((element) => element.click())
-        .catch(() => {});
 
       let linkResult = { success: false };
       for (let linkAttempt = 1; linkAttempt <= 4; linkAttempt++) {
@@ -620,7 +595,7 @@ async function expandSeeMoreInPost(
           .locator('[data-omni-fb-see-more-target="true"]')
           .evaluate((element) => {
             const text = (element.textContent || '').trim();
-            return /^(\.{3}|…)?\s*(Xem thêm|See more|Xem th.m)$/i.test(text);
+            return text === 'Xem thêm' || text === 'See more';
           })
           .catch(() => false);
 
