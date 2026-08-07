@@ -261,12 +261,15 @@ async function main() {
       await page.locator('input#email').fill(generated.email);
       await wait(1500);
 
-      await page.evaluate(() => {
-        const form = document.querySelector('#commentform');
-        if (form) {
-          HTMLFormElement.prototype.submit.call(form);
-        }
-      });
+      const submitBtn = page.locator('#commentform input[type="submit"], #commentform button[type="submit"]');
+      if (await submitBtn.count() > 0) {
+        await submitBtn.first().click();
+      } else {
+        await page.evaluate(() => {
+          const form = document.querySelector('#commentform');
+          if (form) HTMLFormElement.prototype.submit.call(form);
+        });
+      }
       
       await wait(8000);
 
@@ -280,10 +283,11 @@ async function main() {
         progress.reviewed.push(targetUrl);
         await omni.file.write(config.progressDbPath, JSON.stringify(progress, null, 2));
       } else {
-        console.warn('[review] Review submission validation failed.');
+        throw new Error('[REVIEW_SUBMIT_FAILED] Không bấm gửi được đánh giá hoặc tải trang thất bại.');
       }
     } catch (err) {
       console.error('[review] Error during product review:', err.message || err);
+      throw err;
     }
   }
 
