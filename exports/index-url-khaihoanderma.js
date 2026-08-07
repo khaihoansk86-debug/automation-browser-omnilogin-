@@ -242,11 +242,17 @@ async function main() {
       console.log(`[review] Submitting review for "${generated.name}": "${generated.review}"`);
       
       // Select 5-star rating natively to trigger WooCommerce validation
-      const stars = page.locator('.stars a');
-      if (await stars.count() > 0) {
-        await stars.last().click({ force: true });
+      const starLinks = page.locator('.comment-form-rating a, .stars a, p.stars a');
+      if (await starLinks.count() > 0) {
+        // Cố gắng click vào thẻ a cuối cùng (tương ứng với 5 sao)
+        await starLinks.last().scrollIntoViewIfNeeded().catch(() => {});
+        await starLinks.last().click({ force: true });
       } else {
         await page.evaluate(() => {
+          // Fallback JavaScript click
+          const links = document.querySelectorAll('.comment-form-rating a, .stars a');
+          if (links.length > 0) links[links.length - 1].click();
+          
           const ratingSelect = document.querySelector('select#rating');
           if (ratingSelect) {
             ratingSelect.value = '5';
