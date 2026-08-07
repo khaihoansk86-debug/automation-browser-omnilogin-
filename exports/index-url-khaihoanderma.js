@@ -241,19 +241,19 @@ async function main() {
       const generated = await generateReviewWithAI(productTitle, productDesc, config.openAiApiKey);
       console.log(`[review] Submitting review for "${generated.name}": "${generated.review}"`);
       
-      // Submit review
-      await page.evaluate(() => {
-        const star5 = document.querySelector('.stars a.star-5');
-        if (star5) {
-          star5.click();
-          star5.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        }
-        const ratingSelect = document.querySelector('select#rating');
-        if (ratingSelect) {
-          ratingSelect.value = '5';
-          ratingSelect.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
+      // Select 5-star rating natively to trigger WooCommerce validation
+      const stars = page.locator('.stars a');
+      if (await stars.count() > 0) {
+        await stars.last().click({ force: true });
+      } else {
+        await page.evaluate(() => {
+          const ratingSelect = document.querySelector('select#rating');
+          if (ratingSelect) {
+            ratingSelect.value = '5';
+            ratingSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      }
       await wait(1000);
 
       await page.locator('textarea#comment').fill(generated.review);
@@ -261,14 +261,24 @@ async function main() {
       await page.locator('input#email').fill(generated.email);
       await wait(1500);
 
-      const submitBtn = page.locator('#commentform input[type="submit"], #commentform button[type="submit"]');
-      if (await submitBtn.count() > 0) {
-        await submitBtn.first().click();
-      } else {
-        await page.evaluate(() => {
-          const form = document.querySelector('#commentform');
-          if (form) HTMLFormElement.prototype.submit.call(form);
-        });
+      const clicked = await page.evaluate(() => {
+        const btn = document.querySelector('#commentform input[type="submit"], #commentform button[type="submit"], #submit.submit');
+        if (btn) {
+          btn.scrollIntoView({ block: 'center', inline: 'center' });
+          btn.click();
+          return true;
+        }
+        
+        const form = document.querySelector('#commentform');
+        if (form) {
+          HTMLFormElement.prototype.submit.call(form);
+          return true;
+        }
+        return false;
+      });
+
+      if (!clicked) {
+        console.warn('[review] Không tìm thấy nút gửi đánh giá hoặc biểu mẫu.');
       }
       
       await wait(8000);
