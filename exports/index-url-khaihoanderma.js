@@ -40,7 +40,7 @@ async function gotoSafe(url, label = '[nav]') {
 
 async function generateReviewWithAI(productTitle, productDesc, openAiApiKey) {
   const prompt = `Bạn là một khách hàng nữ người Việt Nam mua hàng online.
-Hãy viết một đánh giá sản phẩm 5 sao cực kỳ tự nhiên, ngắn gọn (1-2 câu), thực tế bằng tiếng Việt, tập trung vào công dụng của sản phẩm.
+Hãy viết một đánh giá sản phẩm 5 sao SIÊU NGẮN GỌN (khoảng 10 - 20 chữ, tối đa 1 câu ngắn), cực kỳ tự nhiên và thực tế. Chỉ cần tập trung khen đúng 1 công dụng nổi bật nhất của sản phẩm. KHÔNG viết dài dòng.
 Thông tin sản phẩm:
 - Tên sản phẩm: ${productTitle}
 - Mô tả/Công dụng: ${productDesc}
@@ -262,9 +262,19 @@ async function main() {
       }
       await wait(1000);
 
-      await page.locator('textarea#comment').fill(generated.review);
-      await page.locator('input#author').fill(generated.name);
-      await page.locator('input#email').fill(generated.email);
+      await page.evaluate((data) => {
+        const setVal = (selector, val) => {
+          const el = document.querySelector(selector);
+          if (el) {
+            el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        };
+        setVal('textarea#comment', data.review);
+        setVal('input#author', data.name);
+        setVal('input#email', data.email);
+      }, generated);
       await wait(1500);
 
       const clicked = await page.evaluate(() => {
