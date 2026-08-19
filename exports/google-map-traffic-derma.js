@@ -154,9 +154,96 @@ async function searchGoogle(keyword) {
   }
 }
 
+async function checkAndHandleSingleCardDirectly(config) {
+  const cardInfo = await page.evaluate(() => {
+    const headings = Array.from(document.querySelectorAll('div[data-attrid*="title"], div.VkpGBb, [role="heading"], div.rllt__details, g-card'));
+    for (const h of headings) {
+      const text = (h.innerText || '').toLowerCase();
+      if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('phan thiết'))) {
+        return { text: h.innerText.trim() };
+      }
+    }
+    return null;
+  });
+
+  if (!cardInfo) return false;
+
+  console.log(`[map] Found target business card on search page: "${cardInfo.text}"`);
+  
+  const dirButtons = page.locator('a:has-text("Chỉ đường"), button:has-text("Chỉ đường"), [data-value*="Directions"], [aria-label*="Chỉ đường"], a:has-text("Directions"), button:has-text("Directions")');
+  const webButtons = page.locator('a:has-text("Trang web"), button:has-text("Trang web"), [data-value*="Website"], [aria-label*="Trang web"], a:has-text("Website"), button:has-text("Website")');
+
+  const hasDir = await isVisibleSafe(dirButtons.first());
+  const hasWeb = await isVisibleSafe(webButtons.first());
+
+  if (hasDir || hasWeb) {
+    reportStep('map_found', `Đã tìm thấy: ${cardInfo.text}`);
+    
+    const chooseDirections = hasDir && (!hasWeb || Math.random() < 0.5);
+
+    if (chooseDirections) {
+      console.log('[map-single] Clicking "Chỉ đường" (Directions)...');
+      reportStep('map_interacting', 'Đang bấm nút "Chỉ đường" xem tuyến đường bản đồ...');
+      const btn = dirButtons.first();
+      await btn.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await btn.click({ force: true }).catch(() => {});
+      
+      console.log('[map-single] Interacting with directions map view...');
+      for (let s = 0; s < 5; s++) {
+        await moveMouseNaturally();
+        await safeMouseWheel(0, randomInt(-200, 200));
+        await wait(3000 + randomInt(1000, 3000));
+      }
+
+      if (hasWeb && Math.random() < 0.7) {
+        console.log('[map-single] Also visiting "Trang web" after checking directions...');
+        reportStep('map_interacting', 'Đang bấm tiếp nút "Trang web"...');
+        await page.goBack().catch(() => {});
+        await wait(2500);
+        const webBtn = page.locator('a:has-text("Trang web"), button:has-text("Trang web"), [aria-label*="Trang web"]').first();
+        if (await isVisibleSafe(webBtn)) {
+          await webBtn.click({ force: true }).catch(() => {});
+          await wait(5000 + randomInt(2000, 5000));
+          for (let ws = 0; ws < 4; ws++) {
+            await moveMouseNaturally();
+            await safeMouseWheel(0, 300 + randomInt(100, 200));
+            await wait(2500 + randomInt(1000, 2000));
+          }
+        }
+      }
+    } else {
+      console.log('[map-single] Clicking "Trang web" (Website)...');
+      reportStep('map_interacting', 'Đang bấm nút "Trang web" vào website Khải Hoàn...');
+      const btn = webButtons.first();
+      await btn.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await btn.click({ force: true }).catch(() => {});
+      
+      console.log('[map-single] Browsing target website...');
+      for (let s = 0; s < 6; s++) {
+        await moveMouseNaturally();
+        await safeMouseWheel(0, 350 + randomInt(100, 250));
+        await wait(3000 + randomInt(1500, 3000));
+      }
+    }
+
+    reportStep('map_done', 'Hoàn tất tương tác bản đồ & trang web!');
+    return { found: true, directCard: true };
+  }
+
+  return false;
+}
+
 async function findAndOpenMapProfile(config) {
   console.log('[map] Looking for Google Maps Local Pack or "Doanh nghiệp khác"...');
   reportStep('map_search', 'Đang tìm kiếm Profile Google Map...');
+
+  // 0. Check if Google returned a single local card with "Trang web" / "Chỉ đường"
+  const singleCardResult = await checkAndHandleSingleCardDirectly(config);
+  if (singleCardResult && singleCardResult.directCard) {
+    return singleCardResult;
+  }
 
   // 1. Check if target business is directly in the initial 3-pack on the search page
   const directPackCandidate = await page.evaluate(() => {
@@ -177,7 +264,7 @@ async function findAndOpenMapProfile(config) {
     if (await packItems.count() > directPackCandidate.index) {
       await packItems.nth(directPackCandidate.index).click();
       await wait(3000);
-      return true;
+      return { found: true, directCard: false };
     }
   }
 
@@ -476,10 +563,13 @@ async function main() {
   const keyword = await loadKeyword(config);
   
   await searchGoogle(keyword);
-  const found = await findAndOpenMapProfile(config);
+  const foundResult = await findAndOpenMapProfile(config);
+  const isFound = Boolean(foundResult && (foundResult === true || foundResult.found));
   
-  if (found) {
-    await interactWithMapProfile(config);
+  if (isFound) {
+    if (!foundResult || !foundResult.directCard) {
+      await interactWithMapProfile(config);
+    }
   } else {
     console.warn('[map] Warning: Target Map Profile was not found in search results.');
     reportStep('map_not_found', 'Không tìm thấy Profile Map trong kết quả');
@@ -489,7 +579,7 @@ async function main() {
   const output = {
     keyword,
     targetBusinessName: config.targetBusinessName,
-    found,
+    found: isFound,
     url: await page.url(),
     title: await page.title(),
     finishedAt: new Date().toISOString(),
