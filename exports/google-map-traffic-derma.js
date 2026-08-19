@@ -34,7 +34,7 @@ function remainingMs(deadline) {
 }
 
 async function wait(ms) {
-  await page.waitForTimeout(Math.max(0, Math.floor(ms)));
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.floor(ms))));
 }
 
 async function safeMouseMove(x, y, options) {
@@ -155,20 +155,8 @@ async function findAndOpenMapProfile(config) {
   console.log('[map] Looking for Google Maps Local Pack or "Doanh nghiệp khác"...');
   reportStep('map_search', 'Đang tìm kiếm Profile Google Map...');
 
-  // Matcher for target business
-  const isTargetMatch = (text) => {
-    if (!text) return false;
-    const lower = text.toLowerCase();
-    return (
-      (lower.includes('khải hoàn') && (lower.includes('skincare') || lower.includes('spa') || lower.includes('nhà thuốc') || lower.includes('phan thiết'))) ||
-      lower.includes('01 vạn thủy tú') ||
-      lower.includes('nhà thuốc khải hoàn')
-    );
-  };
-
   // 1. Check if target business is directly in the initial 3-pack on the search page
   const directPackCandidate = await page.evaluate(() => {
-    // Look inside local pack headers
     const elements = Array.from(document.querySelectorAll('div[data-async-context*="local_results"] [role="heading"], div[data-attrid*="local"] [role="heading"], g-card, div.rllt__details'));
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
@@ -217,7 +205,6 @@ async function findAndOpenMapProfile(config) {
   }
 
   if (!clickedMore) {
-    // Fallback: evaluate click
     clickedMore = await page.evaluate(() => {
       const allLinks = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
       for (const el of allLinks) {
@@ -240,14 +227,12 @@ async function findAndOpenMapProfile(config) {
     console.log(`[map] Scanning Places list (Page ${pageIndex}/${maxPages})...`);
     reportStep('map_scanning', `Đang tìm Map trang ${pageIndex}...`);
 
-    // Natural scroll down the left places list
     for (let scrollStep = 0; scrollStep < 5; scrollStep++) {
       await moveMouseNaturally();
       await safeMouseWheel(0, 350 + randomInt(100, 300));
       await wait(800 + randomInt(300, 700));
     }
 
-    // Check all listing items on current page
     const foundIndex = await page.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb'));
       for (let i = 0; i < cards.length; i++) {
@@ -256,7 +241,6 @@ async function findAndOpenMapProfile(config) {
           return i;
         }
       }
-      // Broader check for just "khải hoàn"
       for (let i = 0; i < cards.length; i++) {
         const text = (cards[i].innerText || '').toLowerCase();
         if (text.includes('khải hoàn')) {
@@ -280,7 +264,6 @@ async function findAndOpenMapProfile(config) {
       }
     }
 
-    // If not found, try clicking "Tiếp theo >" / Next Page button
     console.log(`[map] Target not found on page ${pageIndex}, checking Next Page button...`);
     const nextBtn = page.locator('a#pnnext, button#pnnext, td.d6cvqb a, a:has-text("Tiếp"), button[aria-label*="tiếp"]').first();
     if (await isVisibleSafe(nextBtn)) {
@@ -294,7 +277,7 @@ async function findAndOpenMapProfile(config) {
     }
   }
 
-  // Fallback: If still not found, try direct search with brand term on Google Maps
+  // Fallback direct search
   console.log('[map] Fallback: Searching direct business name on Google...');
   const searchInput = page.locator('textarea[name="q"], input[name="q"]').first();
   if (await isVisibleSafe(searchInput)) {
@@ -327,29 +310,89 @@ async function interactWithMapProfile(config) {
 
   // 1. Overview (Tổng quan) scrolling & reading
   console.log('[map-interaction] 1. Reading overview info (Address, hours, phone)...');
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     if (remainingMs(deadline) <= 15000) break;
     await moveMouseNaturally();
     await safeMouseWheel(0, 250 + randomInt(50, 200));
     await waitWithinBudget(2000 + randomInt(1000, 2500), deadline);
   }
 
-  // 2. View Photos tab / carousel
+  // 2. Interacting with Top Action Buttons (Website, Directions, Save, Share, Call)
+  if (remainingMs(deadline) > 25000) {
+    const actionChoices = ['directions', 'share', 'save', 'website_hover', 'call_hover'];
+    const chosenAction = actionChoices[Math.floor(Math.random() * actionChoices.length)];
+    console.log(`[map-interaction] 2. Performing top action button: ${chosenAction}...`);
+
+    if (chosenAction === 'directions') {
+      const dirBtn = page.locator('button:has-text("Directions"), button:has-text("Đường đi"), a:has-text("Directions"), a:has-text("Đường đi"), [data-value*="Directions"], [aria-label*="Đường đi"]').first();
+      if (await isVisibleSafe(dirBtn)) {
+        await dirBtn.scrollIntoViewIfNeeded().catch(() => {});
+        await wait(500);
+        await dirBtn.click({ force: true }).catch(() => {});
+        console.log('[map-interaction] Clicked "Directions" / "Đường đi" button!');
+        await waitWithinBudget(4000 + randomInt(1000, 3000), deadline);
+        // Press Escape or back to return to place details
+        await page.keyboard.press('Escape').catch(() => {});
+        await waitWithinBudget(1500, deadline);
+      }
+    } else if (chosenAction === 'share') {
+      const shareBtn = page.locator('button:has-text("Share"), button:has-text("Chia sẻ"), [aria-label*="Chia sẻ"]').first();
+      if (await isVisibleSafe(shareBtn)) {
+        await shareBtn.click({ force: true }).catch(() => {});
+        console.log('[map-interaction] Clicked "Share" / "Chia sẻ" modal!');
+        await waitWithinBudget(3000 + randomInt(1000, 2000), deadline);
+        await page.keyboard.press('Escape').catch(() => {});
+        await waitWithinBudget(1500, deadline);
+      }
+    } else if (chosenAction === 'save') {
+      const saveBtn = page.locator('button:has-text("Save"), button:has-text("Lưu"), [aria-label*="Lưu"]').first();
+      if (await isVisibleSafe(saveBtn)) {
+        const box = await saveBtn.boundingBox().catch(() => null);
+        if (box) {
+          await safeMouseMove(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+          await waitWithinBudget(2500, deadline);
+        }
+      }
+    } else if (chosenAction === 'website_hover') {
+      const webBtn = page.locator('button:has-text("Website"), button:has-text("Trang web"), a:has-text("Website"), a:has-text("Trang web"), [aria-label*="Trang web"]').first();
+      if (await isVisibleSafe(webBtn)) {
+        const box = await webBtn.boundingBox().catch(() => null);
+        if (box) {
+          await safeMouseMove(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+          await waitWithinBudget(3000, deadline);
+        }
+      }
+    }
+  }
+
+  // 3. Check Services section (Dịch vụ)
+  if (remainingMs(deadline) > 25000) {
+    console.log('[map-interaction] 3. Checking Services (Dịch vụ) section...');
+    const servicesRow = page.locator('div:has-text("Services:"), div:has-text("Dịch vụ:"), [aria-label*="Dịch vụ"]').first();
+    if (await isVisibleSafe(servicesRow)) {
+      await servicesRow.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await servicesRow.click({ force: true }).catch(() => {});
+      await waitWithinBudget(3500 + randomInt(1000, 2000), deadline);
+      await page.keyboard.press('Escape').catch(() => {});
+    }
+  }
+
+  // 4. View Photos tab / gallery (Ảnh)
   if (remainingMs(deadline) > 20000) {
-    console.log('[map-interaction] 2. Checking Photos tab / gallery...');
+    console.log('[map-interaction] 4. Checking Photos tab / gallery...');
     const photoTabSelectors = [
+      'button:has-text("Photos")',
       'button:has-text("Ảnh")',
       'div[role="tab"]:has-text("Ảnh")',
       'a:has-text("Ảnh")',
       'button[aria-label*="Ảnh"]',
       'div[data-tab-index="2"]',
     ];
-    let photoTabClicked = false;
     for (const selector of photoTabSelectors) {
       const tab = page.locator(selector).first();
       if (await isVisibleSafe(tab)) {
-        await tab.click({ force: true });
-        photoTabClicked = true;
+        await tab.click({ force: true }).catch(() => {});
         console.log(`[map-interaction] Clicked Photos tab via: ${selector}`);
         break;
       }
@@ -357,7 +400,6 @@ async function interactWithMapProfile(config) {
 
     await waitWithinBudget(3000 + randomInt(1000, 2000), deadline);
 
-    // Scroll through photos
     for (let p = 0; p < 3; p++) {
       if (remainingMs(deadline) <= 15000) break;
       await moveMouseNaturally();
@@ -366,21 +408,22 @@ async function interactWithMapProfile(config) {
     }
   }
 
-  // 3. View Reviews tab
+  // 5. View Reviews tab / More Google reviews (Bài đánh giá)
   if (remainingMs(deadline) > 20000) {
-    console.log('[map-interaction] 3. Checking Reviews tab...');
+    console.log('[map-interaction] 5. Checking Reviews tab & customer reviews...');
     const reviewTabSelectors = [
+      'button:has-text("Reviews")',
       'button:has-text("Bài đánh giá")',
       'div[role="tab"]:has-text("Bài đánh giá")',
-      'a:has-text("Bài đánh giá")',
-      'button[aria-label*="đánh giá"]',
-      'div:has-text("Các bài đánh giá khác trên Google")',
+      'button:has-text("More Google reviews")',
+      'button:has-text("Các bài đánh giá khác trên Google")',
+      'div:has-text("More Google reviews")',
     ];
     for (const selector of reviewTabSelectors) {
       const tab = page.locator(selector).first();
       if (await isVisibleSafe(tab)) {
         await tab.scrollIntoViewIfNeeded().catch(() => {});
-        await tab.click({ force: true });
+        await tab.click({ force: true }).catch(() => {});
         console.log(`[map-interaction] Clicked Reviews tab via: ${selector}`);
         break;
       }
@@ -388,28 +431,26 @@ async function interactWithMapProfile(config) {
 
     await waitWithinBudget(2500 + randomInt(500, 1500), deadline);
 
-    // Scroll through reviews reading them naturally
     for (let r = 0; r < 4; r++) {
-      if (remainingMs(deadline) <= 15000) break;
+      if (remainingMs(deadline) <= 12000) break;
       await moveMouseNaturally();
       await safeMouseWheel(0, 280 + randomInt(80, 200));
       await waitWithinBudget(3000 + randomInt(1500, 3000), deadline);
     }
   }
 
-  // 4. Return to Overview (Tổng quan) and check popular times
-  if (remainingMs(deadline) > 10000) {
-    console.log('[map-interaction] 4. Returning to Overview tab...');
-    const overviewTab = page.locator('button:has-text("Tổng quan"), div[role="tab"]:has-text("Tổng quan"), a:has-text("Tổng quan")').first();
+  // 6. Return to Overview (Tổng quan) and check popular times / opening hours
+  if (remainingMs(deadline) > 8000) {
+    console.log('[map-interaction] 6. Returning to Overview tab...');
+    const overviewTab = page.locator('button:has-text("Overview"), button:has-text("Tổng quan"), div[role="tab"]:has-text("Tổng quan")').first();
     if (await isVisibleSafe(overviewTab)) {
-      await overviewTab.click({ force: true });
+      await overviewTab.click({ force: true }).catch(() => {});
       await waitWithinBudget(2000, deadline);
     }
 
-    // Scroll up and down naturally
-    await safeMouseWheel(0, -500);
+    await safeMouseWheel(0, -600);
     await waitWithinBudget(2000 + randomInt(1000, 2000), deadline);
-    await safeMouseWheel(0, 300);
+    await safeMouseWheel(0, 350);
     await waitWithinBudget(remainingMs(deadline), deadline);
   }
 
