@@ -1415,6 +1415,23 @@ async function runLocalAiAppScript(
       }
     }
 
+    // Ensure browser window is maximized (Full screen)
+    try {
+      if (session?.page) {
+        const cdp = await session.page.context().newCDPSession(session.page);
+        const { windowId } = await cdp.send('Browser.getWindowForTarget');
+        await cdp.send('Browser.setWindowBounds', {
+          windowId,
+          bounds: { windowState: 'maximized' }
+        });
+        await cdp.detach().catch(() => {});
+      }
+    } catch {
+      try {
+        await session?.page?.setViewportSize({ width: 1920, height: 1080 });
+      } catch {}
+    }
+
     const reporter = async (step: string, detail?: any) => {
       if (statusMessageId !== null) {
         const updatedText = renderStatus(step, detail);

@@ -737,7 +737,24 @@ async function interactWithMapProfile(config) {
   reportStep('map_done', 'Hoàn tất trọn vẹn 4 giai đoạn Google Map & Web/Social');
 }
 
+async function ensureWindowMaximized() {
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    const { windowId } = await cdp.send('Browser.getWindowForTarget');
+    await cdp.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { windowState: 'maximized' }
+    });
+    await cdp.detach().catch(() => {});
+  } catch {
+    try {
+      await page.setViewportSize({ width: 1920, height: 1080 });
+    } catch {}
+  }
+}
+
 async function main() {
+  await ensureWindowMaximized();
   const config = {
     keywordFilePath: String(param('keywordFilePath') || DEFAULTS.keywordFilePath),
     targetBusinessName: String(param('targetBusinessName') || DEFAULTS.targetBusinessName),
