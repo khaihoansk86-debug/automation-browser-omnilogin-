@@ -1209,6 +1209,8 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
         const runScript = new AsyncFunction('page', 'omni', '__params', script);
         await runScript(session.page, session.services, {
             reporter,
+            profileId,
+            profileName,
             openAiApiKey: process.env.OPENAI_API_KEY?.trim()
         });
         const elapsedMs = Date.now() - scriptStartedAt;

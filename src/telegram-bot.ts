@@ -1427,6 +1427,8 @@ async function runLocalAiAppScript(
 
     await runScript(session.page, session.services, {
       reporter,
+      profileId,
+      profileName,
       openAiApiKey: process.env.OPENAI_API_KEY?.trim()
     });
     const elapsedMs = Date.now() - scriptStartedAt;

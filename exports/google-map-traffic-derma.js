@@ -167,7 +167,7 @@ async function searchGoogle(keyword) {
   try {
     await page.goto('https://www.google.com/?hl=vi&gl=vn', { waitUntil: 'domcontentloaded', timeout: 45000 });
   } catch (gotoErr) {
-    console.log('[map] page.goto warning, attempting direct search url:', gotoErr.message || String(gotoErr));
+    console.log('[map] page.goto warning, navigating to direct search URL...');
     await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}&hl=vi&gl=vn`, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
     await wait(3000);
     return;
@@ -219,96 +219,118 @@ async function searchGoogle(keyword) {
 
 // Find and click strictly on Khải Hoàn Skincare card to OPEN the Profile Details
 async function clickTargetPlaceCardStrictly() {
-  return await page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb, div.dbg0pd, g-card, div.I6TXqe, div.g, div[role="article"], a[href*="maps/place"]'));
-    
-    for (const card of cards) {
-      const text = (card.innerText || '').toLowerCase();
-      if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
-        const clickable = card.querySelector('[role="heading"], a, div.dbg0pd, span') || card;
-        clickable.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        clickable.click();
-        return { success: true, name: card.innerText.split('\n')[0].trim() };
+  try {
+    return await page.evaluate(() => {
+      try {
+        const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb, div.dbg0pd, g-card, div.I6TXqe, div.g, div[role="article"], a[href*="maps/place"]'));
+        
+        for (const card of cards) {
+          const text = (card.innerText || '').toLowerCase();
+          if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
+            const clickable = card.querySelector('[role="heading"], a, div.dbg0pd, span') || card;
+            if (clickable && typeof clickable.scrollIntoView === 'function') {
+              clickable.scrollIntoView({ block: 'center' });
+            }
+            if (clickable && typeof clickable.click === 'function') {
+              clickable.click();
+            }
+            return { success: true, name: (card.innerText || '').split('\n')[0].trim() };
+          }
+        }
+        return { success: false };
+      } catch (innerErr) {
+        return { success: false, error: String(innerErr) };
       }
-    }
+    });
+  } catch (err) {
+    console.log('[map] clickTargetPlaceCardStrictly safe catch:', err.message || String(err));
     return { success: false };
-  });
+  }
 }
 
 // Helper: Click STRICTLY inside the opened Khải Hoàn Skincare Drawer / Place Panel
 async function clickInsideKhảiHoànDrawer(targetType) {
-  return await page.evaluate((type) => {
-    const containers = Array.from(document.querySelectorAll('div.I6TXqe, div.m6QErb, div.section-layout, div[role="main"], div.x3Eknd, div.B7vV8c, div.kno-ecr-pt, div.pane'));
-    let targetDrawer = null;
-    
-    for (const c of containers) {
-      const text = (c.innerText || '').toLowerCase();
-      if (text.includes('khải hoàn') && (text.includes('đường đi') || text.includes('trang web') || text.includes('01 vạn thủy tú') || text.includes('bài đánh giá') || text.includes('ảnh') || text.includes('thông tin khác'))) {
-        targetDrawer = c;
-        break;
-      }
-    }
-    
-    if (!targetDrawer) {
-      const allText = (document.body.innerText || '').toLowerCase();
-      if (allText.includes('khải hoàn skincare') || allText.includes('nhà thuốc khải hoàn')) {
-        targetDrawer = document.body;
-      }
-    }
+  try {
+    return await page.evaluate((type) => {
+      try {
+        const containers = Array.from(document.querySelectorAll('div.I6TXqe, div.m6QErb, div.section-layout, div[role="main"], div.x3Eknd, div.B7vV8c, div.kno-ecr-pt, div.pane'));
+        let targetDrawer = null;
+        
+        for (const c of containers) {
+          const text = (c.innerText || '').toLowerCase();
+          if (text.includes('khải hoàn') && (text.includes('đường đi') || text.includes('trang web') || text.includes('01 vạn thủy tú') || text.includes('bài đánh giá') || text.includes('ảnh') || text.includes('thông tin khác'))) {
+            targetDrawer = c;
+            break;
+          }
+        }
+        
+        if (!targetDrawer) {
+          const allText = (document.body.innerText || '').toLowerCase();
+          if (allText.includes('khải hoàn skincare') || allText.includes('nhà thuốc khải hoàn')) {
+            targetDrawer = document.body;
+          }
+        }
 
-    if (!targetDrawer) return { success: false, reason: 'drawer_not_found' };
+        if (!targetDrawer) return { success: false, reason: 'drawer_not_found' };
 
-    if (type === 'duong_di') {
-      const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
-      for (const el of allButtons) {
-        const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
-        if (label === 'Đường đi' || label.startsWith('Đường đi') || el.getAttribute('data-value') === 'Directions') {
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return { success: true, clicked: 'duong_di' };
+        if (type === 'duong_di') {
+          const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
+          for (const el of allButtons) {
+            const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
+            if (label === 'Đường đi' || label.startsWith('Đường đi') || el.getAttribute('data-value') === 'Directions') {
+              if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+              el.click();
+              return { success: true, clicked: 'duong_di' };
+            }
+          }
+        } else if (type === 'trang_web') {
+          const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
+          for (const el of allButtons) {
+            const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
+            if (label === 'Trang web' || label.startsWith('Trang web') || el.getAttribute('href')?.includes('khaihoan') || el.getAttribute('data-value') === 'Website') {
+              if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+              el.click();
+              return { success: true, clicked: 'trang_web' };
+            }
+          }
+        } else if (type === 'dich_vu') {
+          const allDivs = Array.from(targetDrawer.querySelectorAll('div, button, a'));
+          for (const el of allDivs) {
+            const text = (el.innerText || '').toLowerCase();
+            if (text.includes('dịch vụ:') || text.includes('cấy tảo xoắn') || text.includes('nặn mụn')) {
+              if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+              el.click();
+              return { success: true, clicked: 'dich_vu' };
+            }
+          }
+        } else if (type === 'danh_gia') {
+          const allTabs = Array.from(targetDrawer.querySelectorAll('button, a, div[role="tab"], div'));
+          for (const el of allTabs) {
+            const text = (el.innerText || '').toLowerCase();
+            if (text.includes('bài đánh giá') || text.includes('14 bài đánh giá') || text.includes('reviews')) {
+              if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+              el.click();
+              return { success: true, clicked: 'danh_gia' };
+            }
+          }
+        } else if (type === 'anh') {
+          const img = targetDrawer.querySelector('button[aria-label*="Ảnh"], div[role="tab"]:has-text("Ảnh"), div.m6QErb button img, div[jsaction*="photo"], button.aoRNLd img, div.lA3jAc img, img');
+          if (img) {
+            if (typeof img.scrollIntoView === 'function') img.scrollIntoView({ block: 'center' });
+            img.click();
+            return { success: true, clicked: 'anh' };
+          }
         }
-      }
-    } else if (type === 'trang_web') {
-      const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
-      for (const el of allButtons) {
-        const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
-        if (label === 'Trang web' || label.startsWith('Trang web') || el.getAttribute('href')?.includes('khaihoan') || el.getAttribute('data-value') === 'Website') {
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return { success: true, clicked: 'trang_web' };
-        }
-      }
-    } else if (type === 'dich_vu') {
-      const allDivs = Array.from(targetDrawer.querySelectorAll('div, button, a'));
-      for (const el of allDivs) {
-        const text = (el.innerText || '').toLowerCase();
-        if (text.includes('dịch vụ:') || text.includes('cấy tảo xoắn') || text.includes('nặn mụn')) {
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return { success: true, clicked: 'dich_vu' };
-        }
-      }
-    } else if (type === 'danh_gia') {
-      const allTabs = Array.from(targetDrawer.querySelectorAll('button, a, div[role="tab"], div'));
-      for (const el of allTabs) {
-        const text = (el.innerText || '').toLowerCase();
-        if (text.includes('bài đánh giá') || text.includes('14 bài đánh giá') || text.includes('reviews')) {
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return { success: true, clicked: 'danh_gia' };
-        }
-      }
-    } else if (type === 'anh') {
-      const img = targetDrawer.querySelector('button[aria-label*="Ảnh"], div[role="tab"]:has-text("Ảnh"), div.m6QErb button img, div[jsaction*="photo"], button.aoRNLd img, div.lA3jAc img, img');
-      if (img) {
-        img.scrollIntoView({ block: 'center' });
-        img.click();
-        return { success: true, clicked: 'anh' };
-      }
-    }
 
-    return { success: false, reason: 'button_not_found' };
-  }, targetType);
+        return { success: false, reason: 'button_not_found' };
+      } catch (innerErr) {
+        return { success: false, error: String(innerErr) };
+      }
+    }, targetType);
+  } catch (err) {
+    console.log('[map] clickInsideKhảiHoànDrawer safe catch:', err.message || String(err));
+    return { success: false };
+  }
 }
 
 async function findAndOpenMapProfile(config) {
@@ -351,18 +373,20 @@ async function findAndOpenMapProfile(config) {
   }
 
   if (!clickedMore) {
-    clickedMore = await page.evaluate(() => {
-      const allLinks = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
-      for (const el of allLinks) {
-        const t = (el.innerText || '').toLowerCase();
-        if (t.includes('doanh nghiệp khác') || t.includes('xem thêm địa điểm') || t.includes('more businesses') || t.includes('more places')) {
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return true;
+    try {
+      clickedMore = await page.evaluate(() => {
+        const allLinks = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
+        for (const el of allLinks) {
+          const t = (el.innerText || '').toLowerCase();
+          if (t.includes('doanh nghiệp khác') || t.includes('xem thêm địa điểm') || t.includes('more businesses') || t.includes('more places')) {
+            if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+            el.click();
+            return true;
+          }
         }
-      }
-      return false;
-    });
+        return false;
+      });
+    } catch {}
   }
 
   await wait(3500 + randomInt(500, 1500));
@@ -427,22 +451,24 @@ async function reopenKhảiHoànProfileOnMaps(config) {
   console.log('[map] Re-searching and opening Khải Hoàn Skincare on Maps after Directions...');
   reportStep('map_interacting', { action: 'Mở lại Profile Khải Hoàn để xem ảnh & đánh giá' });
   
-  const mapsSearchInput = page.locator('input#searchboxinput, input[name="q"], input[aria-label*="Tìm kiếm"]').first();
-  if (await isVisibleSafe(mapsSearchInput)) {
-    await mapsSearchInput.click().catch(() => {});
-    await wait(300);
-    await mapsSearchInput.fill('').catch(() => {});
-    const query = 'Nhà thuốc Khải Hoàn Skincare Phan Thiết';
-    for (const char of query) {
-      await page.keyboard.type(char, { delay: randomInt(30, 60) });
+  try {
+    const mapsSearchInput = page.locator('input#searchboxinput, input[name="q"], input[aria-label*="Tìm kiếm"]').first();
+    if (await isVisibleSafe(mapsSearchInput)) {
+      await mapsSearchInput.click().catch(() => {});
+      await wait(300);
+      await mapsSearchInput.fill('').catch(() => {});
+      const query = 'Nhà thuốc Khải Hoàn Skincare Phan Thiết';
+      for (const char of query) {
+        await page.keyboard.type(char, { delay: randomInt(30, 60) });
+      }
+      await wait(400);
+      await mapsSearchInput.press('Enter').catch(() => {});
+      await wait(3500 + randomInt(500, 1500));
+    } else {
+      await page.goto('https://www.google.com/maps/search/Nhà+thuốc+Khải+Hoàn+Skincare+Phan+Thiết?hl=vi', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await wait(3500);
     }
-    await wait(400);
-    await mapsSearchInput.press('Enter').catch(() => {});
-    await wait(3500 + randomInt(500, 1500));
-  } else {
-    await page.goto('https://www.google.com/maps/search/Nhà+thuốc+Khải+Hoàn+Skincare+Phan+Thiết?hl=vi', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-    await wait(3500);
-  }
+  } catch {}
 
   await clickTargetPlaceCardStrictly();
   await wait(3000);
@@ -540,14 +566,14 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
     if (remainingMs(deadline) <= 15000) break;
     await moveMouseNaturally();
     await safeMouseWheel(0, 320 + randomInt(80, 200));
-    const curUrl = await page.url().catch(() => '');
+    const curUrl = (await page.url()) || '';
     const label = curUrl.includes('facebook') ? 'Fanpage Facebook Khải Hoàn' : (curUrl.includes('khaihoanskincare') ? 'Web khaihoanskincare.com' : 'Web khaihoanderma.com');
     reportStep('map_interacting', { action: `Lướt xem trang chủ ${label}`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
     await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
   }
 
   // Step 3B: Click into 1st Product / Treatment Service Detail Page (40 - 60s)
-  const currentUrl = await page.url().catch(() => '');
+  const currentUrl = (await page.url()) || '';
   if (!currentUrl.includes('facebook') && remainingMs(deadline) > 30000) {
     console.log('[map-stage4] Clicking 1st product/article on website...');
     const productSelectors = [
@@ -765,22 +791,24 @@ async function main() {
     await wait(10000);
   }
 
-  const output = {
-    keyword,
-    targetBusinessName: config.targetBusinessName,
-    found: Boolean(found),
-    url: await page.url(),
-    title: await page.title(),
-    finishedAt: new Date().toISOString(),
-  };
-
-  console.log('[map] Execution Output:', JSON.stringify(output, null, 2));
   try {
-    await omni.file.export(output, {
-      path: config.exportPath,
-      format: 'json',
-      onConflict: 'overwrite',
-    });
+    const output = {
+      keyword,
+      targetBusinessName: config.targetBusinessName,
+      found: Boolean(found),
+      url: page.url(),
+      title: await page.title().catch(() => ''),
+      finishedAt: new Date().toISOString(),
+    };
+
+    console.log('[map] Execution Output:', JSON.stringify(output, null, 2));
+    if (omni?.file?.export) {
+      await omni.file.export(output, {
+        path: config.exportPath,
+        format: 'json',
+        onConflict: 'overwrite',
+      }).catch(() => {});
+    }
   } catch {}
 }
 
@@ -790,5 +818,4 @@ try {
   const message = fatalError?.message || String(fatalError);
   console.error('[map-fatal-error]', message);
   reportStep('error', message);
-  throw fatalError;
 }
