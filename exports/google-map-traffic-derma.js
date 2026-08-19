@@ -195,11 +195,10 @@ async function searchGoogle(keyword) {
 // Find and click strictly on Khải Hoàn Skincare card to OPEN the Profile Details
 async function clickTargetPlaceCardStrictly() {
   return await page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb, div.dbg0pd, g-card, div.I6TXqe, div.g'));
+    const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb, div.dbg0pd, g-card, div.I6TXqe, div.g, div[role="article"], a[href*="maps/place"]'));
     
     for (const card of cards) {
       const text = (card.innerText || '').toLowerCase();
-      // Must contain 'khải hoàn'
       if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
         const clickable = card.querySelector('[role="heading"], a, div.dbg0pd, span') || card;
         clickable.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -211,15 +210,15 @@ async function clickTargetPlaceCardStrictly() {
   });
 }
 
-// Helper: Click STRICTLY inside the opened Khải Hoàn Skincare Drawer
+// Helper: Click STRICTLY inside the opened Khải Hoàn Skincare Drawer / Place Panel
 async function clickInsideKhảiHoànDrawer(targetType) {
   return await page.evaluate((type) => {
-    const containers = Array.from(document.querySelectorAll('div.I6TXqe, div.m6QErb, div.section-layout, div[role="main"], div.x3Eknd, div.B7vV8c, div.kno-ecr-pt'));
+    const containers = Array.from(document.querySelectorAll('div.I6TXqe, div.m6QErb, div.section-layout, div[role="main"], div.x3Eknd, div.B7vV8c, div.kno-ecr-pt, div.pane'));
     let targetDrawer = null;
     
     for (const c of containers) {
       const text = (c.innerText || '').toLowerCase();
-      if (text.includes('khải hoàn') && (text.includes('đường đi') || text.includes('trang web') || text.includes('01 vạn thủy tú') || text.includes('bài đánh giá') || text.includes('thông tin khác'))) {
+      if (text.includes('khải hoàn') && (text.includes('đường đi') || text.includes('trang web') || text.includes('01 vạn thủy tú') || text.includes('bài đánh giá') || text.includes('ảnh') || text.includes('thông tin khác'))) {
         targetDrawer = c;
         break;
       }
@@ -275,7 +274,7 @@ async function clickInsideKhảiHoànDrawer(targetType) {
         }
       }
     } else if (type === 'anh') {
-      const img = targetDrawer.querySelector('div.m6QErb button img, div[jsaction*="photo"], button.aoRNLd img, div.lA3jAc img, img');
+      const img = targetDrawer.querySelector('button[aria-label*="Ảnh"], div[role="tab"]:has-text("Ảnh"), div.m6QErb button img, div[jsaction*="photo"], button.aoRNLd img, div.lA3jAc img, img');
       if (img) {
         img.scrollIntoView({ block: 'center' });
         img.click();
@@ -398,7 +397,33 @@ async function findAndOpenMapProfile(config) {
   return false;
 }
 
-// Stage 4 Helper: Click randomly into Khải Hoàn web/social links (khaihoanskincare / khaihoanderma / facebook) with DEEP product browsing
+// Helper: Re-search & reopen Khải Hoàn Skincare Profile on Google Maps after exiting Directions
+async function reopenKhảiHoànProfileOnMaps(config) {
+  console.log('[map] Re-searching and opening Khải Hoàn Skincare on Maps after Directions...');
+  reportStep('map_interacting', { action: 'Mở lại Profile Khải Hoàn để xem ảnh & đánh giá' });
+  
+  const mapsSearchInput = page.locator('input#searchboxinput, input[name="q"], input[aria-label*="Tìm kiếm"]').first();
+  if (await isVisibleSafe(mapsSearchInput)) {
+    await mapsSearchInput.click();
+    await wait(300);
+    await mapsSearchInput.fill('');
+    const query = 'Nhà thuốc Khải Hoàn Skincare Phan Thiết';
+    for (const char of query) {
+      await page.keyboard.type(char, { delay: randomInt(30, 60) });
+    }
+    await wait(400);
+    await mapsSearchInput.press('Enter');
+    await wait(3500 + randomInt(500, 1500));
+  } else {
+    await page.goto('https://www.google.com/maps/search/Nhà+thuốc+Khải+Hoàn+Skincare+Phan+Thiết?hl=vi', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await wait(3500);
+  }
+
+  await clickTargetPlaceCardStrictly();
+  await wait(3000);
+}
+
+// Stage 4 Helper: Click randomly into Khải Hoàn web/social links (khaihoanderma / khaihoanskincare / facebook) with DEEP product browsing
 async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
   console.log('[map-stage4] Phase 4: Finding Web / Facebook links for Khải Hoàn Skincare...');
   reportStep('map_interacting', { action: 'Tìm liên kết Web & Facebook của Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
@@ -421,7 +446,7 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
     await wait(3000 + randomInt(500, 1500));
   }
 
-  // 2. Select target destination (khaihoanskincare.com / khaihoanderma.com / facebook.com)
+  // 2. Select target destination (khaihoanderma.com / khaihoanskincare.com / facebook.com)
   const targetChoices = ['khaihoanderma', 'khaihoanskincare', 'facebook'];
   const chosenTarget = targetChoices[Math.floor(Math.random() * targetChoices.length)];
   console.log(`[map-stage4] Chosen target destination: ${chosenTarget}`);
@@ -574,7 +599,7 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
   }
 }
 
-// FULL 4-STAGE INTERACTION: Đường đi -> Xem Ảnh -> Đọc Đánh giá -> Lướt Web/Social
+// FULL 4-STAGE INTERACTION: Đường đi -> Reopen Profile -> Xem Ảnh -> Đọc Đánh giá -> Lướt Web/Social
 async function interactWithMapProfile(config) {
   const dwellSeconds = randomInt(
     Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
@@ -633,7 +658,7 @@ async function interactWithMapProfile(config) {
       await wait(4000 + randomInt(1500, 3000));
     }
     
-    // Close directions / back to Khải Hoàn profile
+    // Close directions
     const backBtn = page.locator('button[aria-label*="Quay lại"], button[aria-label*="Back"], button.hYBOP, button[jsaction*="back"], button[aria-label*="Đóng"]').first();
     if (await isVisibleSafe(backBtn)) {
       await backBtn.click({ force: true }).catch(() => {});
@@ -641,6 +666,9 @@ async function interactWithMapProfile(config) {
       await page.keyboard.press('Escape').catch(() => {});
     }
     await wait(2500);
+
+    // RE-OPEN KHẢI HOÀN SKINCARE PROFILE TO PROCEED WITH REMAINING STAGES
+    await reopenKhảiHoànProfileOnMaps(config);
   }
 
   // ==========================================
