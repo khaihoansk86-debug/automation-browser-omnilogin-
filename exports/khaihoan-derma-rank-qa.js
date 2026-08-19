@@ -399,8 +399,12 @@ async function searchGoogle(keyword, options = {}) {
 
   console.log('[step2] search keyword: ' + keyword);
   const searchInput = page.locator('textarea[name="q"], input[name="q"]').first();
-  await searchInput.fill(keyword);
-  await wait(800 + Math.floor(Math.random() * 900));
+  await searchInput.click();
+  await wait(300 + Math.floor(Math.random() * 400));
+  for (const char of keyword) {
+    await page.keyboard.type(char, { delay: 40 + Math.floor(Math.random() * 70) });
+  }
+  await wait(600 + Math.floor(Math.random() * 800));
   await searchInput.press('Enter');
   const searchState = await waitUntilSearchResultsReady();
   if (searchState.captchaDetected) {
@@ -1709,27 +1713,34 @@ async function main() {
   const targetResult = targetScan.targetResult;
   
   let bouncedCompetitor = null;
-  if (targetResult && topResults && topResults.length > 0) {
+  // Trigger SEO pogosticking on 45% of runs when competitors are present
+  if (targetResult && topResults && topResults.length > 0 && Math.random() < 0.45) {
     const competitors = topResults.filter(
       (r) => !isTargetHost(r.host, config.targetDomain) && /^https?:\/\//i.test(r.url)
     );
     if (competitors.length > 0) {
-      const compCandidate = competitors.slice(0, 5);
+      const compCandidate = competitors.slice(0, 3);
       const randomCompetitor = compCandidate[Math.floor(Math.random() * compCandidate.length)];
-      console.log('[derma] SEO Pogosticking: clicking competitor first: ' + randomCompetitor.url);
+      console.log('[derma] SEO Pogosticking: visiting competitor first: ' + randomCompetitor.url);
       try {
         const clickResult = await tryClickGoogleResult(randomCompetitor, '[competitor]', {
           searchUrl: await page.url(),
           allowFallback: false
         });
         if (clickResult.clicked) {
-          const compStaySeconds = 3 + Math.floor(Math.random() * 5);
-          console.log(`[derma] SEO Pogosticking: staying on competitor for ${compStaySeconds}s`);
-          await wait(compStaySeconds * 1000);
+          // Scroll and stay for 10-20 seconds to simulate a real unsatisfied visitor
+          const compStaySeconds = 10 + Math.floor(Math.random() * 10);
+          console.log(`[derma] SEO Pogosticking: browsing competitor for ${compStaySeconds}s`);
+          await wait(2000);
+          await safeMouseWheel(0, 300 + Math.floor(Math.random() * 400));
+          await wait(3000 + Math.floor(Math.random() * 2000));
+          await safeMouseWheel(0, 200 + Math.floor(Math.random() * 300));
+          await wait((compStaySeconds - 5) * 1000);
+          
           console.log('[derma] SEO Pogosticking: bouncing back to Google search');
           await page.goBack();
-          await page.waitForLoadState('domcontentloaded');
-          await wait(1500 + Math.floor(Math.random() * 1500));
+          await page.waitForLoadState('domcontentloaded').catch(() => {});
+          await wait(2000 + Math.floor(Math.random() * 2000));
           bouncedCompetitor = {
             url: randomCompetitor.url,
             title: randomCompetitor.title,

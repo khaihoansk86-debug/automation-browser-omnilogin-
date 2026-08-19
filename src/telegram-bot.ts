@@ -57,6 +57,21 @@ type MktProxyConfig = {
   rotateMode: 'current' | 'new';
 };
 
+type ProxyEntry = {
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  proxyType: 'HTTP' | 'Socks5';
+  changeIpUrl?: string;
+};
+
+type UniversalProxyConfig = {
+  enabled: boolean;
+  proxies: ProxyEntry[];
+  mktConfig: MktProxyConfig;
+};
+
 type GscSyncConfig = {
   enabled: boolean;
   syncBeforeRun: boolean;
@@ -380,7 +395,10 @@ function loadMktProxyConfig(): MktProxyConfig {
 function pickMktProxyKey(profile: ProfileRef, config: MktProxyConfig) {
   if (config.keys.length === 0) return undefined;
   const profileNumber = Number(profile.name);
-  const index = Number.isInteger(profileNumber) && profileNumber > 0 ? (profileNumber - 1) % config.keys.length : profile.id % config.keys.length;
+  const index =
+    Number.isInteger(profileNumber) && profileNumber > 0
+      ? (profileNumber - 1) % config.keys.length
+      : profile.id % config.keys.length;
   return config.keys[index];
 }
 
@@ -420,12 +438,12 @@ async function fetchMktProxy(config: MktProxyConfig, key: string, preferNew: boo
   }
 
   return {
-    proxy_type: String(data.protocol || 'http').toLowerCase() === 'socks5' ? 'Socks5' : 'HTTP',
+    proxy_type: String(data.protocol || 'http').toLowerCase() === 'socks5' ? ('Socks5' as const) : ('HTTP' as const),
     host,
     port,
     user_name: username,
     password,
-  } as const;
+  };
 }
 
 async function refreshMktProxyForProfile(
@@ -477,6 +495,143 @@ async function refreshMktProxyForProfile(
   );
 }
 
+function parseProxyList(rawList?: string, rawChangeUrls?: string): ProxyEntry[] {
+  if (!rawList) return [];
+  const entries = rawList.split(/[\n,;]/).map((s) => s.trim()).filter(Boolean);
+  const changeUrls = (rawChangeUrls || '').split(/[\n,;]/).map((s) => s.trim()).filter(Boolean);
+
+  return entries
+    .map((entry, index) => {
+      let host = '';
+      let port = 0;
+      let username = '';
+      let password = '';
+      let proxyType: 'HTTP' | 'Socks5' = 'HTTP';
+
+      if (entry.includes('://')) {
+        try {
+          const url = new URL(entry);
+          host = url.hostname;
+          port = parseInt(url.port, 10);
+          username = decodeURIComponent(url.username);
+          password = decodeURIComponent(url.password);
+          if (url.protocol.startsWith('socks')) proxyType = 'Socks5';
+        } catch {}
+      } else {
+        const parts = entry.split(':');
+        if (parts.length >= 4) {
+          host = parts[0];
+          port = parseInt(parts[1], 10);
+          username = parts[2];
+          password = parts.slice(3).join(':');
+        } else if (parts.length === 2) {
+          host = parts[0];
+          port = parseInt(parts[1], 10);
+        }
+      }
+
+      return {
+        host,
+        port,
+        username,
+        password,
+        proxyType,
+        changeIpUrl: changeUrls[index] || undefined,
+      };
+    })
+    .filter((p) => p.host && p.port > 0);
+}
+
+function loadUniversalProxyConfig(): UniversalProxyConfig {
+  const mktConfig = loadMktProxyConfig();
+  const rawProxyList = process.env.PROXY_LIST?.trim() || '';
+  const rawChangeUrls = process.env.PROXY_CHANGE_IP_URLS?.trim() || '';
+  const parsedProxies = parseProxyList(rawProxyList, rawChangeUrls);
+  const proxyEnabled = parseBoolean(process.env.PROXY_ENABLED, parsedProxies.length > 0 || mktConfig.enabled);
+
+  return {
+    enabled: proxyEnabled,
+    proxies: parsedProxies,
+    mktConfig,
+  };
+}
+
+async function setupProxyForProfile(
+  telegram: TelegramClient,
+  chatId: number,
+  omni: OmniLogin,
+  profileId: number,
+  config: UniversalProxyConfig,
+) {
+  if (!config.enabled) return;
+
+  const profiles = await loadProfilesByNameOrId(omni);
+  const profile = profiles.find((item) => item.id === profileId);
+  if (!profile) throw new Error(`Không tìm thấy profile ID ${profileId} để cập nhật proxy`);
+
+  // 1. If custom proxies (e.g. xxproxy) are configured
+  if (config.proxies.length > 0) {
+    const profileNumber = Number(profile.name);
+    const index =
+      Number.isInteger(profileNumber) && profileNumber > 0
+        ? (profileNumber - 1) % config.proxies.length
+        : profile.id % config.proxies.length;
+    const selectedProxy = config.proxies[index];
+
+    // If changeIpUrl is configured, trigger IP rotation before launching
+    if (selectedProxy.changeIpUrl) {
+      try {
+        console.log(`[proxy] Rotating IP via URL: ${selectedProxy.changeIpUrl}`);
+        await fetch(selectedProxy.changeIpUrl);
+        await delay(2000);
+      } catch (err) {
+        console.log(`[proxy] Warning: changeIpUrl failed:`, err);
+      }
+    }
+
+    const proxyData = {
+      proxy_type: selectedProxy.proxyType,
+      host: selectedProxy.host,
+      port: selectedProxy.port,
+      user_name: selectedProxy.username || '',
+      password: selectedProxy.password || '',
+    };
+
+    const detail = await omni.profiles.get(profileId);
+    const currentProxy = (detail as { proxy?: { id?: number; name?: string } }).proxy;
+    const proxyName = currentProxy?.name || `Proxy-${selectedProxy.port}`;
+
+    if (currentProxy?.id) {
+      await omni.proxies.update(currentProxy.id, {
+        name: proxyName,
+        ...proxyData,
+      });
+    } else {
+      const created = await omni.proxies.create({
+        name: proxyName,
+        ...proxyData,
+      });
+      await omni.profiles.assignProxy(created.id, [profileId]);
+    }
+
+    await telegram.sendMessage(
+      chatId,
+      [
+        '<b>🌐 Đã gán Proxy Dân Cư Xoay</b>',
+        `👤 Profile: <b>${escapeHtml(profile.name || String(profileId))}</b> (ID: ${profileId})`,
+        `🔌 Proxy: <code>${selectedProxy.host}:${selectedProxy.port}</code>`,
+        `⚡ Loại: <code>Residential HTTP (XXProxy)</code>`,
+      ].join('\n'),
+    );
+    return;
+  }
+
+  // 2. Fallback to MKTProxy if configured
+  if (config.mktConfig.enabled && config.mktConfig.apiKey) {
+    await refreshMktProxyForProfile(telegram, chatId, omni, profileId, config.mktConfig);
+  }
+}
+
 async function waitForProfileRunOrCaptcha(
   telegram: TelegramClient,
   chatId: number,
@@ -526,6 +681,10 @@ class TelegramClient {
 
     const payload = (await response.json()) as { ok: boolean; result?: T; description?: string };
     if (!response.ok || !payload.ok) {
+      if (method !== 'getUpdates' && method !== 'getFile') {
+         console.error(`Telegram API error (${method}):`, payload.description);
+         return {} as T;
+      }
       throw new Error(payload.description || `Telegram API lỗi: ${method}`);
     }
 
@@ -703,7 +862,7 @@ async function runAiAppForProfiles(
   delayRange: DelayRange,
   profileRunSeconds: number,
   closeAfterRun: boolean,
-  mktProxyConfig: MktProxyConfig,
+  proxyConfig: UniversalProxyConfig,
   gscSyncConfig: GscSyncConfig,
   state: RunState,
 ) {
@@ -798,7 +957,7 @@ async function runAiAppForProfiles(
         ].join('\n')
       ).catch(() => {});
 
-      await refreshMktProxyForProfile(telegram, chatId, omni, profileId, mktProxyConfig);
+      await setupProxyForProfile(telegram, chatId, omni, profileId, proxyConfig);
       const aiAppLogOffset = getFileSize(getAiAppLogPath(app.appId));
       const localScriptPath = getLocalAiAppScriptPath(app.appId);
       const hasLocalScript = existsSync(localScriptPath);
@@ -1096,7 +1255,9 @@ async function runLocalAiAppScript(
         const total = detail?.total || 60;
         statusLines.audit = `🔵 Đang tương tác ở web Derma (${elapsed}/${total}s)...`;
       } else if (currentStep === 'web_gallery_checked') {
-        statusLines.audit = `🔵 Đã kiểm tra ảnh, tiếp tục đọc trang sản phẩm...`;
+        statusLines.audit = `🔄 Đã kiểm tra ảnh, tiếp tục đọc trang sản phẩm...`;
+      } else if (currentStep === 'web_search') {
+        statusLines.audit = `🔍 ${escapeHtml(detail || 'Đang tìm kiếm trên web Khải Hoàn Derma...')}`;
       } else if (currentStep === 'web_related_clicking') {
         statusLines.audit = `🔵 Đang bấm một sản phẩm tương tự...`;
       } else if (currentStep === 'web_related_retry') {
@@ -1415,7 +1576,7 @@ async function main() {
   const defaultDelaySeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_DELAY_SECONDS, 60) || 60;
   const defaultProfileRunSeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_RUN_SECONDS, 180) || 180;
   const defaultCloseAfterRun = parseBoolean(process.env.CLOSE_PROFILE_AFTER_RUN, true);
-  const mktProxyConfig = loadMktProxyConfig();
+  const proxyConfig = loadUniversalProxyConfig();
   const gscConfig = loadGscConfig();
   const gscSyncConfig: GscSyncConfig = {
     enabled: gscConfig.enabled,
@@ -1810,7 +1971,7 @@ async function main() {
             delayRange,
             profileRunSeconds,
             closeAfterRun,
-            mktProxyConfig,
+            proxyConfig,
             gscSyncConfig,
             state,
           );
