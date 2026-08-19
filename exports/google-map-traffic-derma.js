@@ -219,7 +219,7 @@ async function clickInsideKhảiHoànDrawer(targetType) {
     
     for (const c of containers) {
       const text = (c.innerText || '').toLowerCase();
-      if (text.includes('khải hoàn') && (text.includes('đường đi') || text.includes('trang web') || text.includes('01 vạn thủy tú') || text.includes('bài đánh giá'))) {
+      if (text.includes('khải hoàn') && (text.includes('đường đi') || text.includes('trang web') || text.includes('01 vạn thủy tú') || text.includes('bài đánh giá') || text.includes('thông tin khác'))) {
         targetDrawer = c;
         break;
       }
@@ -248,7 +248,7 @@ async function clickInsideKhảiHoànDrawer(targetType) {
       const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
       for (const el of allButtons) {
         const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
-        if (label === 'Trang web' || label.startsWith('Trang web') || el.getAttribute('href')?.includes('khaihoanderma') || el.getAttribute('data-value') === 'Website') {
+        if (label === 'Trang web' || label.startsWith('Trang web') || el.getAttribute('href')?.includes('khaihoan') || el.getAttribute('data-value') === 'Website') {
           el.scrollIntoView({ block: 'center' });
           el.click();
           return { success: true, clicked: 'trang_web' };
@@ -398,7 +398,115 @@ async function findAndOpenMapProfile(config) {
   return false;
 }
 
-// FULL 4-STAGE INTERACTION: Đường đi -> Xem Ảnh -> Đọc Đánh giá -> Lướt Trang web
+// Stage 4 Helper: Click randomly into Khải Hoàn web/social links (khaihoanskincare / khaihoanderma / facebook)
+async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
+  console.log('[map-stage4] Phase 4: Finding Web / Facebook links for Khải Hoàn Skincare...');
+  reportStep('map_interacting', { action: 'Tìm liên kết Web & Facebook của Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+
+  // 1. Scroll down the drawer to locate Web/Social links and "Thông tin khác về..."
+  for (let s = 0; s < 4; s++) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 350 + randomInt(100, 200));
+    await wait(1000);
+  }
+
+  // Check if "Thông tin khác về..." button is available and click it
+  const moreInfoBtn = page.locator('button:has-text("Thông tin khác về"), a:has-text("Thông tin khác về"), [aria-label*="Thông tin khác về"], div[role="button"]:has-text("Thông tin khác")').first();
+  if (await isVisibleSafe(moreInfoBtn)) {
+    console.log('[map-stage4] Clicking "Thông tin khác về Nhà thuốc Khải Hoàn Skincare"...');
+    reportStep('map_interacting', { action: 'Bấm "Thông tin khác về Khải Hoàn"', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await moreInfoBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await wait(600);
+    await moreInfoBtn.click({ force: true }).catch(() => {});
+    await wait(3000 + randomInt(500, 1500));
+  }
+
+  // 2. Select target destination (khaihoanskincare.com / khaihoanderma.com / facebook.com)
+  const targetChoices = ['khaihoanskincare', 'khaihoanderma', 'facebook'];
+  const chosenTarget = targetChoices[Math.floor(Math.random() * targetChoices.length)];
+  console.log(`[map-stage4] Chosen target destination: ${chosenTarget}`);
+
+  let clickedLink = false;
+
+  if (chosenTarget === 'khaihoanskincare') {
+    reportStep('map_interacting', { action: 'Bấm vào web khaihoanskincare.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    const link = page.locator('a[href*="khaihoanskincare.com"]').first();
+    if (await isVisibleSafe(link)) {
+      await link.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await link.click({ force: true }).catch(() => {});
+      clickedLink = true;
+    }
+  } else if (chosenTarget === 'khaihoanderma') {
+    reportStep('map_interacting', { action: 'Bấm vào web khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    const link = page.locator('a[href*="khaihoanderma.com"]').first();
+    if (await isVisibleSafe(link)) {
+      await link.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await link.click({ force: true }).catch(() => {});
+      clickedLink = true;
+    }
+  } else if (chosenTarget === 'facebook') {
+    reportStep('map_interacting', { action: 'Bấm vào Fanpage Facebook Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    const link = page.locator('a[href*="facebook.com"][href*="khaihoan"], a:has-text("Facebook · Nhà Thuốc Khải Hoàn"), a:has-text("Nhà Thuốc Khải Hoàn - Khải Hoàn Skincare")').first();
+    if (await isVisibleSafe(link)) {
+      await link.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await link.click({ force: true }).catch(() => {});
+      clickedLink = true;
+    }
+  }
+
+  // Fallback 1: Click any available Khải Hoàn domain link
+  if (!clickedLink) {
+    const fallbackLink = page.locator('a[href*="khaihoanskincare.com"], a[href*="khaihoanderma.com"], a[href*="facebook.com"][href*="khaihoan"]').first();
+    if (await isVisibleSafe(fallbackLink)) {
+      await fallbackLink.scrollIntoViewIfNeeded().catch(() => {});
+      await wait(600);
+      await fallbackLink.click({ force: true }).catch(() => {});
+      clickedLink = true;
+    }
+  }
+
+  // Fallback 2: Direct navigation if click failed
+  if (!clickedLink) {
+    const fallbackUrls = [
+      'https://khaihoanskincare.com/',
+      'https://khaihoanderma.com/',
+      'https://www.facebook.com/nhathuockhaihoan/',
+    ];
+    const url = fallbackUrls[Math.floor(Math.random() * fallbackUrls.length)];
+    console.log(`[map-stage4] Direct fallback navigation to: ${url}`);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  }
+
+  await wait(4500 + randomInt(1000, 2000));
+
+  // 3. Deep dwell & browsing inside the target page
+  console.log('[map-stage4] Deep browsing on destination page...');
+  while (remainingMs(deadline) > 12000) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 320 + randomInt(100, 200));
+    const currentUrl = await page.url().catch(() => '');
+    const siteLabel = currentUrl.includes('facebook') ? 'Fanpage Facebook Khải Hoàn' : (currentUrl.includes('khaihoanskincare') ? 'Web khaihoanskincare.com' : 'Web khaihoanderma.com');
+    reportStep('map_interacting', { action: `Lướt đọc ${siteLabel}`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await waitWithinBudget(3500 + randomInt(1500, 3500), deadline);
+
+    // If budget allows and on website, click into 1-2 product/article links
+    if (remainingMs(deadline) > 35000 && !currentUrl.includes('facebook') && Math.random() < 0.35) {
+      const subLinks = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], a[href*="/bang-gia/"], .product-title a, article a, h3 a');
+      const count = await subLinks.count();
+      if (count > 0) {
+        const idx = Math.floor(Math.random() * Math.min(count, 8));
+        console.log(`[map-stage4] Navigating to sub-article/product #${idx}...`);
+        await subLinks.nth(idx).click({ force: true }).catch(() => {});
+        await wait(3500);
+      }
+    }
+  }
+}
+
+// FULL 4-STAGE INTERACTION: Đường đi -> Xem Ảnh -> Đọc Đánh giá -> Lướt Web/Social
 async function interactWithMapProfile(config) {
   const dwellSeconds = randomInt(
     Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
@@ -502,41 +610,13 @@ async function interactWithMapProfile(config) {
   }
 
   // ==========================================
-  // GIAI ĐOẠN 4: BẤM NÚT "TRANG WEB" & LƯỚT SÂU KHAIHOANDERMA.COM (60 - 120s)
+  // GIAI ĐOẠN 4: BẤM "THÔNG TIN KHÁC" / KHAIHOANSKINCARE / KHAIHOANDERMA / FACEBOOK (60 - 120s)
   // ==========================================
-  console.log('[map-stage4] Phase 4: Clicking "Trang web" button inside Khải Hoàn profile...');
-  reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào website khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-
-  const webClick = await clickInsideKhảiHoànDrawer('trang_web');
-  if (!webClick || !webClick.success) {
-    await page.goto('https://khaihoanderma.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-  }
-  await wait(4500 + randomInt(1000, 2000));
-
-  // Deep browsing on Khải Hoàn Derma website
-  console.log('[map-stage4] Deep browsing on Khải Hoàn Derma website...');
-  while (remainingMs(deadline) > 12000) {
-    await moveMouseNaturally();
-    await safeMouseWheel(0, 320 + randomInt(100, 200));
-    reportStep('map_interacting', { action: 'Lướt đọc bài viết & sản phẩm trên website Derma', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    await waitWithinBudget(3500 + randomInt(1500, 3500), deadline);
-
-    // If budget allows, click into 1-2 product/article links
-    if (remainingMs(deadline) > 35000 && Math.random() < 0.35) {
-      const links = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], .product-title a, article a, h3.entry-title a');
-      const count = await links.count();
-      if (count > 0) {
-        const idx = Math.floor(Math.random() * Math.min(count, 8));
-        console.log(`[map-stage4] Navigating to article/product #${idx}...`);
-        await links.nth(idx).click({ force: true }).catch(() => {});
-        await wait(3500);
-      }
-    }
-  }
+  await performWebOrSocialEngagement(deadline, startMs, dwellSeconds);
 
   await waitWithinBudget(remainingMs(deadline), deadline);
   console.log('[map] Full 4-Stage Profile Engagement finished successfully!');
-  reportStep('map_done', 'Hoàn tất trọn vẹn 4 giai đoạn Google Map & Website');
+  reportStep('map_done', 'Hoàn tất trọn vẹn 4 giai đoạn Google Map & Web/Social');
 }
 
 async function main() {
