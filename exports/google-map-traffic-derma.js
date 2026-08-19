@@ -3,7 +3,7 @@ const DEFAULTS = {
   targetBusinessName: 'Nhà thuốc Khải Hoàn Skincare',
   targetLocationKeyword: 'Phan Thiết',
   targetAddressSnippet: '01 Vạn Thủy Tú',
-  mapDwellMinSeconds: 200,  // ~3.5 minutes
+  mapDwellMinSeconds: 210,  // ~3.5 minutes
   mapDwellMaxSeconds: 360,  // ~6 minutes
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\google-map-output.json',
 };
@@ -157,12 +157,10 @@ async function searchGoogle(keyword) {
 // Find and click strictly on Khải Hoàn Skincare card to OPEN the Profile Details
 async function clickTargetPlaceCardStrictly() {
   return await page.evaluate(() => {
-    // 1. Scan all place cards and headings on page
     const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb, div.dbg0pd, g-card, div.I6TXqe, div.g'));
     
     for (const card of cards) {
       const text = (card.innerText || '').toLowerCase();
-      // Must contain 'khải hoàn'
       if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
         const clickable = card.querySelector('[role="heading"], a, div.dbg0pd, span') || card;
         clickable.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -237,7 +235,6 @@ async function findAndOpenMapProfile(config) {
     reportStep('map_scanning', `Đang tìm Map trang ${pageIndex}...`);
 
     // Smoothly scroll down the places list on left side
-    const leftPanel = page.locator('div[role="region"], div.m6QErb, div.section-layout, div#pane, div.VkpGBb').first();
     for (let scrollStep = 0; scrollStep < 5; scrollStep++) {
       await moveMouseNaturally();
       await safeMouseWheel(0, 300 + randomInt(100, 200));
@@ -287,6 +284,7 @@ async function findAndOpenMapProfile(config) {
   return false;
 }
 
+// FULL 4-STAGE INTERACTION: Directions -> Photos -> Reviews -> Deep Website
 async function interactWithMapProfile(config) {
   const dwellSeconds = randomInt(
     Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
@@ -295,146 +293,154 @@ async function interactWithMapProfile(config) {
   const deadline = Date.now() + dwellSeconds * 1000;
   const startMs = Date.now();
 
-  console.log(`[map] Starting Map Profile interaction for ${dwellSeconds} seconds (~${Math.round(dwellSeconds/60)} minutes)...`);
-  reportStep('map_interacting', { action: 'Bắt đầu tương tác Profile Map', elapsed: 0, total: dwellSeconds });
+  console.log(`[map] Starting comprehensive 4-Stage Profile interaction for ${dwellSeconds}s (~${Math.round(dwellSeconds/60)} mins)...`);
 
-  // 1. Overview (Tổng quan) scrolling & reading (45 - 60s)
-  console.log('[map-interaction] 1. Reading overview info (Address, hours, phone)...');
-  for (let i = 0; i < 5; i++) {
-    if (remainingMs(deadline) <= 20000) break;
-    await moveMouseNaturally();
-    await safeMouseWheel(0, 250 + randomInt(50, 200));
-    reportStep('map_interacting', { action: 'Xem địa chỉ 01 Vạn Thủy Tú, giờ mở cửa & hotline', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
-  }
+  // ==========================================
+  // GIAI ĐOẠN 1: BẤM CHỈ ĐƯỜNG & XEM BẢN ĐỒ (35 - 50s)
+  // ==========================================
+  console.log('[map-stage1] Phase 1: Clicking "Chỉ đường" (Directions)...');
+  reportStep('map_interacting', { action: 'Bấm nút "Chỉ đường" xem tuyến đường bản đồ', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+  
+  const dirButtons = page.locator('button:has-text("Chỉ đường"), a:has-text("Chỉ đường"), button:has-text("Directions"), a:has-text("Directions"), [aria-label*="Chỉ đường"], [data-value*="Directions"]').first();
+  if (await isVisibleSafe(dirButtons)) {
+    await dirButtons.scrollIntoViewIfNeeded().catch(() => {});
+    await wait(600);
+    await dirButtons.click({ force: true }).catch(() => {});
+    await wait(3000);
 
-  // 2. Check Services section (Dịch vụ) (30 - 45s)
-  if (remainingMs(deadline) > 50000) {
-    console.log('[map-interaction] 2. Checking Services (Dịch vụ) section...');
-    reportStep('map_interacting', { action: 'Xem bảng Dịch vụ chăm sóc da & lấy mụn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    const servicesRow = page.locator('div:has-text("Services:"), div:has-text("Dịch vụ:"), [aria-label*="Dịch vụ"]').first();
-    if (await isVisibleSafe(servicesRow)) {
-      await servicesRow.scrollIntoViewIfNeeded().catch(() => {});
-      await wait(600);
-      await servicesRow.click({ force: true }).catch(() => {});
-      await waitWithinBudget(5000 + randomInt(2000, 4000), deadline);
+    // Pan & view map route
+    for (let ds = 0; ds < 4; ds++) {
+      await moveMouseNaturally();
+      await safeMouseWheel(0, randomInt(-150, 150));
+      reportStep('map_interacting', { action: 'Xem bản đồ & tuyến đường đến 01 Vạn Thủy Tú', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+      await wait(4000 + randomInt(1500, 3000));
+    }
+    
+    // Close directions / back to place profile
+    const backBtn = page.locator('button[aria-label*="Quay lại"], button[aria-label*="Back"], button.hYBOP').first();
+    if (await isVisibleSafe(backBtn)) {
+      await backBtn.click({ force: true }).catch(() => {});
+    } else {
       await page.keyboard.press('Escape').catch(() => {});
     }
+    await wait(2000);
   }
 
-  // 3. View Photos tab / gallery (Ảnh) (60 - 80s)
-  if (remainingMs(deadline) > 45000) {
-    console.log('[map-interaction] 3. Checking Photos tab / gallery...');
-    reportStep('map_interacting', { action: 'Xem Album ảnh cơ sở vật chất & liệu trình', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    
-    const photoTabSelectors = [
-      'button:has-text("Photos")',
-      'button:has-text("Ảnh")',
-      'div[role="tab"]:has-text("Ảnh")',
-      'a:has-text("Ảnh")',
-      'button[aria-label*="Ảnh"]',
-      'div[data-tab-index="2"]',
-    ];
-    for (const selector of photoTabSelectors) {
-      const tab = page.locator(selector).first();
-      if (await isVisibleSafe(tab)) {
-        await tab.click({ force: true }).catch(() => {});
-        console.log(`[map-interaction] Clicked Photos tab via: ${selector}`);
-        break;
-      }
-    }
-
-    await waitWithinBudget(3000 + randomInt(1000, 2000), deadline);
-
-    for (let p = 0; p < 5; p++) {
-      if (remainingMs(deadline) <= 30000) break;
-      await moveMouseNaturally();
-      await safeMouseWheel(0, 300 + randomInt(100, 250));
-      reportStep('map_interacting', { action: `Xem ảnh cơ sở (${p+1}/5)`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      await waitWithinBudget(3500 + randomInt(1500, 3500), deadline);
+  // ==========================================
+  // GIAI ĐOẠN 2: XEM ALBUM ẢNH & CƠ SỞ VẬT CHẤT (45 - 60s)
+  // ==========================================
+  console.log('[map-stage2] Phase 2: Viewing Photos Album & Facilities...');
+  reportStep('map_interacting', { action: 'Mở Album ảnh cơ sở vật chất & liệu trình', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+  
+  const photoSelectors = [
+    'button:has-text("Ảnh")',
+    'button:has-text("Photos")',
+    'div[role="tab"]:has-text("Ảnh")',
+    'button[aria-label*="Ảnh"]',
+    'button[aria-label*="Photos"]',
+    'div.lA3jAc img',
+    'button.aoRNLd img',
+  ];
+  
+  let openedPhotos = false;
+  for (const sel of photoSelectors) {
+    const photoEl = page.locator(sel).first();
+    if (await isVisibleSafe(photoEl)) {
+      await photoEl.click({ force: true }).catch(() => {});
+      openedPhotos = true;
+      console.log(`[map-stage2] Clicked photos via: ${sel}`);
+      break;
     }
   }
 
-  // 4. View Reviews tab / More Google reviews (Bài đánh giá) (60 - 80s)
-  if (remainingMs(deadline) > 30000) {
-    console.log('[map-interaction] 4. Checking Reviews tab & customer reviews...');
-    reportStep('map_interacting', { action: 'Đọc nhận xét & đánh giá 5 sao của khách hàng', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    
-    const reviewTabSelectors = [
-      'button:has-text("Reviews")',
-      'button:has-text("Bài đánh giá")',
-      'div[role="tab"]:has-text("Bài đánh giá")',
-      'button:has-text("More Google reviews")',
-      'button:has-text("Các bài đánh giá khác trên Google")',
-      'div:has-text("More Google reviews")',
-    ];
-    for (const selector of reviewTabSelectors) {
-      const tab = page.locator(selector).first();
-      if (await isVisibleSafe(tab)) {
-        await tab.scrollIntoViewIfNeeded().catch(() => {});
-        await tab.click({ force: true }).catch(() => {});
-        console.log(`[map-interaction] Clicked Reviews tab via: ${selector}`);
-        break;
-      }
-    }
+  await wait(3000);
 
-    await waitWithinBudget(2500 + randomInt(500, 1500), deadline);
+  for (let p = 0; p < 4; p++) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 300 + randomInt(100, 200));
+    reportStep('map_interacting', { action: `Xem ảnh cơ sở & liệu trình trị mụn (${p+1}/4)`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await wait(3500 + randomInt(1500, 3000));
+  }
 
-    for (let r = 0; r < 5; r++) {
-      if (remainingMs(deadline) <= 15000) break;
-      await moveMouseNaturally();
-      await safeMouseWheel(0, 280 + randomInt(80, 200));
-      reportStep('map_interacting', { action: `Đọc nhận xét khách hàng (${r+1}/5)`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      await waitWithinBudget(4000 + randomInt(2000, 4000), deadline);
+  // ==========================================
+  // GIAI ĐOẠN 3: ĐỌC ĐÁNH GIÁ 5 SAO & GIỜ MỞ CỬA (40 - 55s)
+  // ==========================================
+  console.log('[map-stage3] Phase 3: Reading 5-Star Reviews & Opening Hours...');
+  reportStep('map_interacting', { action: 'Mở tab Bài đánh giá 5 sao', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+
+  const reviewSelectors = [
+    'button:has-text("Bài đánh giá")',
+    'button:has-text("Reviews")',
+    'div[role="tab"]:has-text("Bài đánh giá")',
+    'button:has-text("More Google reviews")',
+    'button:has-text("Các bài đánh giá khác trên Google")',
+  ];
+  for (const sel of reviewSelectors) {
+    const revEl = page.locator(sel).first();
+    if (await isVisibleSafe(revEl)) {
+      await revEl.scrollIntoViewIfNeeded().catch(() => {});
+      await revEl.click({ force: true }).catch(() => {});
+      console.log(`[map-stage3] Clicked reviews tab via: ${sel}`);
+      break;
     }
   }
 
-  // 5. Interacting with Profile Action Buttons (Website, Directions, Share, Save) (45 - 60s)
-  if (remainingMs(deadline) > 30000) {
-    console.log('[map-interaction] 5. Interacting with profile action buttons...');
-    const actionChoices = ['website', 'directions', 'share', 'save'];
-    const chosen = actionChoices[Math.floor(Math.random() * actionChoices.length)];
+  await wait(2500);
 
-    if (chosen === 'website') {
-      const webBtn = page.locator('button:has-text("Website"), button:has-text("Trang web"), a:has-text("Website"), a:has-text("Trang web"), [aria-label*="Trang web"]').first();
-      if (await isVisibleSafe(webBtn)) {
-        reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await webBtn.click({ force: true }).catch(() => {});
-        await waitWithinBudget(6000 + randomInt(2000, 4000), deadline);
-      }
-    } else if (chosen === 'directions') {
-      const dirBtn = page.locator('button:has-text("Directions"), button:has-text("Đường đi"), a:has-text("Directions"), a:has-text("Đường đi"), [data-value*="Directions"], [aria-label*="Đường đi"]').first();
-      if (await isVisibleSafe(dirBtn)) {
-        reportStep('map_interacting', { action: 'Bấm nút "Đường đi" xem tuyến đường', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await dirBtn.click({ force: true }).catch(() => {});
-        await waitWithinBudget(5000 + randomInt(2000, 4000), deadline);
-        await page.keyboard.press('Escape').catch(() => {});
-      }
-    } else if (chosen === 'share') {
-      const shareBtn = page.locator('button:has-text("Share"), button:has-text("Chia sẻ"), [aria-label*="Chia sẻ"]').first();
-      if (await isVisibleSafe(shareBtn)) {
-        reportStep('map_interacting', { action: 'Mở popup Chia sẻ địa điểm', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await shareBtn.click({ force: true }).catch(() => {});
-        await waitWithinBudget(4000, deadline);
-        await page.keyboard.press('Escape').catch(() => {});
+  for (let r = 0; r < 4; r++) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 260 + randomInt(80, 180));
+    reportStep('map_interacting', { action: `Đọc nhận xét đánh giá khách hàng (${r+1}/4)`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await wait(3500 + randomInt(1500, 3000));
+  }
+
+  // ==========================================
+  // GIAI ĐOẠN 4: BẤM TRANG WEB & LƯỚT SÂU KHAIHOANDERMA.COM (60 - 120s)
+  // ==========================================
+  console.log('[map-stage4] Phase 4: Clicking "Trang web" (Website) & deep browsing...');
+  reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào website khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+
+  // Return to overview to find website button or click direct link
+  const overviewTab = page.locator('button:has-text("Tổng quan"), button:has-text("Overview"), div[role="tab"]:has-text("Tổng quan")').first();
+  if (await isVisibleSafe(overviewTab)) {
+    await overviewTab.click({ force: true }).catch(() => {});
+    await wait(1500);
+  }
+
+  const webBtn = page.locator('button:has-text("Trang web"), a:has-text("Trang web"), button:has-text("Website"), a:has-text("Website"), [aria-label*="Trang web"], a[href*="khaihoanderma.com"]').first();
+  if (await isVisibleSafe(webBtn)) {
+    await webBtn.click({ force: true }).catch(() => {});
+    await wait(5000 + randomInt(1000, 2000));
+  } else {
+    // If popup or direct navigation needed
+    await page.goto('https://khaihoanderma.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await wait(4000);
+  }
+
+  // Deep browsing on Khải Hoàn Derma website for remaining time budget
+  console.log('[map-stage4] Browsing Khải Hoàn Derma website...');
+  while (remainingMs(deadline) > 12000) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 320 + randomInt(100, 200));
+    reportStep('map_interacting', { action: 'Lướt đọc bài viết & sản phẩm trên website Derma', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await waitWithinBudget(3500 + randomInt(1500, 3500), deadline);
+
+    // If more than 35s remaining, click into product or blog link
+    if (remainingMs(deadline) > 35000 && Math.random() < 0.35) {
+      const links = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], .product-title a, article a, h3.entry-title a');
+      const count = await links.count();
+      if (count > 0) {
+        const idx = Math.floor(Math.random() * Math.min(count, 8));
+        console.log(`[map-stage4] Navigating to article/product #${idx}...`);
+        await links.nth(idx).click({ force: true }).catch(() => {});
+        await wait(3500);
       }
     }
   }
 
-  // 6. Return to Overview and check popular times / opening hours
-  if (remainingMs(deadline) > 5000) {
-    console.log('[map-interaction] 6. Returning to Overview tab...');
-    const overviewTab = page.locator('button:has-text("Overview"), button:has-text("Tổng quan"), div[role="tab"]:has-text("Tổng quan")').first();
-    if (await isVisibleSafe(overviewTab)) {
-      await overviewTab.click({ force: true }).catch(() => {});
-      await waitWithinBudget(2000, deadline);
-    }
-    await safeMouseWheel(0, -600);
-    await waitWithinBudget(remainingMs(deadline), deadline);
-  }
-
-  console.log('[map-interaction] Finished Map Profile engagement successfully!');
-  reportStep('map_done', 'Hoàn tất tương tác Google Map');
+  await waitWithinBudget(remainingMs(deadline), deadline);
+  console.log('[map] Full 4-Stage Profile Engagement finished successfully!');
+  reportStep('map_done', 'Hoàn tất trọn vẹn 4 giai đoạn Google Map & Website');
 }
 
 async function main() {
