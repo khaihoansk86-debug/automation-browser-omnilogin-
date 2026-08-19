@@ -393,7 +393,10 @@ async function throwIfGoogleCaptcha(label) {
 
 async function searchGoogle(keyword, options = {}) {
   console.log('[step1] open google ' + new Date().toISOString());
-  await page.goto('https://www.google.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+  }).catch(() => {});
+  await page.goto('https://www.google.com/?hl=vi&gl=vn', { waitUntil: 'domcontentloaded', timeout: 45000 });
   await maybeAcceptGoogleConsent();
   await waitUntilGoogleHomeReady();
 

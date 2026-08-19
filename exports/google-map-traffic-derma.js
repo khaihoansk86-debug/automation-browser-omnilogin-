@@ -120,9 +120,12 @@ async function maybeAcceptGoogleConsent() {
 }
 
 async function searchGoogle(keyword) {
-  console.log('[map] Opening Google homepage...');
-  reportStep('google_open', 'Đang mở Google...');
-  await page.goto('https://www.google.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  console.log('[map] Opening Google homepage in Vietnamese...');
+  reportStep('google_open', 'Đang mở Google (Tiếng Việt)...');
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+  }).catch(() => {});
+  await page.goto('https://www.google.com/?hl=vi&gl=vn', { waitUntil: 'domcontentloaded', timeout: 45000 });
   await maybeAcceptGoogleConsent();
   await wait(1500);
 
