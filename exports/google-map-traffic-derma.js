@@ -616,7 +616,35 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
   }
 }
 
-// FULL 4-STAGE INTERACTION: Đường đi -> Xem Ảnh -> Đọc Đánh giá -> Lướt Web/Social
+// Click specifically inside the Khải Hoàn detail drawer (yellow circle) to focus before scrolling
+async function focusAndActivateDrawer() {
+  console.log('[map] Moving mouse and clicking inside Khải Hoàn Drawer to focus and activate scrolling...');
+  reportStep('map_interacting', { action: 'Rê chuột & kích hoạt bảng thông tin Khải Hoàn' });
+  
+  try {
+    const box = await page.evaluate(() => {
+      const drawer = document.querySelector('div.I6TXqe, div.m6QErb, div.section-layout, div.x3Eknd, div.B7vV8c, div.kno-ecr-pt');
+      if (drawer) {
+        const rect = drawer.getBoundingClientRect();
+        return {
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + Math.min(rect.height / 2, 380)),
+          found: true
+        };
+      }
+      return { x: 480, y: 380, found: false };
+    });
+
+    // Naturally move mouse into the yellow-circled area
+    await safeMouseMove(box.x, box.y, { steps: randomInt(10, 18) });
+    await wait(300);
+    // Click on safe blank space inside the drawer to focus (without triggering links)
+    await page.mouse.click(box.x, box.y).catch(() => {});
+    await wait(800);
+  } catch {}
+}
+
+// FULL 4-STAGE INTERACTION: Rê chuột kích hoạt Drawer -> Lướt tổng quan -> Đường đi -> Xem Ảnh -> Đọc Đánh giá -> Lướt Web/Social
 async function interactWithMapProfile(config) {
   const dwellSeconds = randomInt(
     Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
@@ -626,6 +654,19 @@ async function interactWithMapProfile(config) {
   const startMs = Date.now();
 
   console.log(`[map] Starting comprehensive 4-Stage Profile interaction for ${dwellSeconds}s (~${Math.round(dwellSeconds/60)} mins)...`);
+
+  // BƯỚC 0: Rê chuột & click vào khu vực khoanh tròn màu vàng (bảng thông tin Profile) để kích hoạt lướt chuột
+  await focusAndActivateDrawer();
+
+  // Lướt xem tổng quan thông tin, biểu đồ giờ cao điểm, địa chỉ 01 Vạn Thủy Tú (20 - 30s)
+  for (let ov = 0; ov < 3; ov++) {
+    await moveMouseNaturally();
+    await scrollDrawerOrPage(280 + randomInt(80, 150));
+    reportStep('map_interacting', { action: `Xem thông tin giờ mở cửa, địa chỉ 01 Vạn Thủy Tú (${ov+1}/3)`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await wait(3000 + randomInt(1000, 2000));
+  }
+  await scrollDrawerOrPage(-1500);
+  await wait(1000);
 
   // ==========================================
   // GIAI ĐOẠN 1: BẤM NÚT "ĐƯỜNG ĐI" & NHẬP VỊ TRÍ PHAN THIẾT (45 - 60s)
