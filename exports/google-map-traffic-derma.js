@@ -472,8 +472,8 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
       clickedLink = true;
     }
   } else if (chosenTarget === 'facebook') {
-    reportStep('map_interacting', { action: 'Bấm vào Fanpage Facebook Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    const link = page.locator('a[href*="facebook.com"][href*="khaihoan"], a:has-text("Facebook · Nhà Thuốc Khải Hoàn"), a:has-text("Nhà Thuốc Khải Hoàn - Khải Hoàn Skincare")').first();
+    reportStep('map_interacting', { action: 'Bấm vào Fanpage Facebook NhaThuocKhaiHoanPT', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    const link = page.locator('a[href*="NhaThuocKhaiHoanPT"], a[href*="facebook.com/NhaThuocKhaiHoanPT"], a[href*="facebook.com"][href*="khaihoan"], a:has-text("Facebook · Nhà Thuốc Khải Hoàn"), a:has-text("Nhà Thuốc Khải Hoàn - Khải Hoàn Skincare")').first();
     if (await isVisibleSafe(link)) {
       await link.scrollIntoViewIfNeeded().catch(() => {});
       await wait(600);
@@ -484,7 +484,7 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
 
   // Fallback 1: Click any available Khải Hoàn domain link
   if (!clickedLink) {
-    const fallbackLink = page.locator('a[href*="khaihoanderma.com"], a[href*="khaihoanskincare.com"], a[href*="facebook.com"][href*="khaihoan"]').first();
+    const fallbackLink = page.locator('a[href*="khaihoanderma.com"], a[href*="khaihoanskincare.com"], a[href*="NhaThuocKhaiHoanPT"], a[href*="facebook.com"][href*="khaihoan"]').first();
     if (await isVisibleSafe(fallbackLink)) {
       await fallbackLink.scrollIntoViewIfNeeded().catch(() => {});
       await wait(600);
@@ -498,7 +498,7 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
     const fallbackUrls = [
       'https://khaihoanderma.com/',
       'https://khaihoanskincare.com/',
-      'https://www.facebook.com/nhathuockhaihoan/',
+      'https://www.facebook.com/NhaThuocKhaiHoanPT/',
     ];
     const url = fallbackUrls[Math.floor(Math.random() * fallbackUrls.length)];
     console.log(`[map-stage4] Direct fallback navigation to: ${url}`);

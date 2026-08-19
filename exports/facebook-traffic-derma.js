@@ -232,14 +232,14 @@ async function searchFacebookPage(query, deadline) {
         const parentText = (a.closest('div[role="article"], div[role="main"] > div') || a.parentElement)?.textContent || '';
         const href = a.href || '';
         if (
-          (text.includes('Khải Hoàn Derma') || text.includes('Dược mỹ phẩm-Khải Hoàn')) &&
+          (text.includes('Khải Hoàn Derma') || text.includes('Dược mỹ phẩm-Khải Hoàn') || text.includes('Nhà Thuốc Khải Hoàn') || text.includes('Khải Hoàn Skincare') || href.includes('NhaThuocKhaiHoanPT')) &&
           href.includes('facebook.com')
         ) {
           results.push({
             href,
             text,
             parentText,
-            matchedInfo: parentText.includes('Spa') || parentText.includes('Vạn Thuỷ Tú') || parentText.includes('Phan Thiết') || parentText.includes('Bình Thuận')
+            matchedInfo: parentText.includes('Spa') || parentText.includes('Vạn Thuỷ Tú') || parentText.includes('Phan Thiết') || parentText.includes('Bình Thuận') || href.includes('NhaThuocKhaiHoanPT')
           });
         }
       }
@@ -264,12 +264,12 @@ async function searchFacebookPage(query, deadline) {
       }
     }
   } catch (err) {
-    console.log('[fb-search] Error matching page result:', err.message || String(err));
+    console.log('[fb-search] Page evaluation error:', err.message || String(err));
   }
 
   if (!pageFound) {
-    console.log('[fb-search] Fallback: Navigating directly to Khải Hoàn Derma Fanpage URL...');
-    await page.goto('https://www.facebook.com/khaihoanderma', { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => {});
+    console.log('[fb-search] Direct fallback to NhaThuocKhaiHoanPT page...');
+    await page.goto('https://www.facebook.com/NhaThuocKhaiHoanPT/', { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => {});
   }
 
   await wait(4000 + randomInt(0, 2000));
