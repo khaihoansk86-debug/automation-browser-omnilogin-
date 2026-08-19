@@ -903,7 +903,7 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
     else if (app.appId === 'google-map-traffic-derma') {
         statusLines.search = '⚪ Mở Google & tìm từ khóa theo file Desktop';
         statusLines.find = '⚪ Quét & tìm Map Khải Hoàn Skincare';
-        statusLines.interact = '⚪ Tương tác xem ảnh, đánh giá, giờ mở cửa (1.5 - 3p)';
+        statusLines.interact = '⚪ Tương tác xem ảnh, đánh giá, website (3.5 - 6p)';
     }
     else {
         statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
@@ -1093,7 +1093,15 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
             else if (currentStep === 'map_interacting') {
                 statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
                 statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
-                statusLines.interact = `🔵 ${escapeHtml(detail || 'Đang tương tác sâu với Profile Map...')}`;
+                if (detail && typeof detail === 'object') {
+                    const action = detail.action || 'Tương tác Profile Map';
+                    const elapsed = detail.elapsed || 0;
+                    const total = detail.total || 0;
+                    statusLines.interact = `🔵 ${escapeHtml(action)} (${elapsed}/${total}s)...`;
+                }
+                else {
+                    statusLines.interact = `🔵 ${escapeHtml(detail || 'Đang tương tác sâu với Profile Map...')}`;
+                }
             }
             else if (currentStep === 'map_done') {
                 statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
