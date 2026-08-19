@@ -398,7 +398,7 @@ async function findAndOpenMapProfile(config) {
   return false;
 }
 
-// Stage 4 Helper: Click randomly into Khải Hoàn web/social links (khaihoanskincare / khaihoanderma / facebook)
+// Stage 4 Helper: Click randomly into Khải Hoàn web/social links (khaihoanskincare / khaihoanderma / facebook) with DEEP product browsing
 async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
   console.log('[map-stage4] Phase 4: Finding Web / Facebook links for Khải Hoàn Skincare...');
   reportStep('map_interacting', { action: 'Tìm liên kết Web & Facebook của Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
@@ -422,24 +422,24 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
   }
 
   // 2. Select target destination (khaihoanskincare.com / khaihoanderma.com / facebook.com)
-  const targetChoices = ['khaihoanskincare', 'khaihoanderma', 'facebook'];
+  const targetChoices = ['khaihoanderma', 'khaihoanskincare', 'facebook'];
   const chosenTarget = targetChoices[Math.floor(Math.random() * targetChoices.length)];
   console.log(`[map-stage4] Chosen target destination: ${chosenTarget}`);
 
   let clickedLink = false;
 
-  if (chosenTarget === 'khaihoanskincare') {
-    reportStep('map_interacting', { action: 'Bấm vào web khaihoanskincare.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    const link = page.locator('a[href*="khaihoanskincare.com"]').first();
+  if (chosenTarget === 'khaihoanderma') {
+    reportStep('map_interacting', { action: 'Bấm vào web khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    const link = page.locator('a[href*="khaihoanderma.com"]').first();
     if (await isVisibleSafe(link)) {
       await link.scrollIntoViewIfNeeded().catch(() => {});
       await wait(600);
       await link.click({ force: true }).catch(() => {});
       clickedLink = true;
     }
-  } else if (chosenTarget === 'khaihoanderma') {
-    reportStep('map_interacting', { action: 'Bấm vào web khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    const link = page.locator('a[href*="khaihoanderma.com"]').first();
+  } else if (chosenTarget === 'khaihoanskincare') {
+    reportStep('map_interacting', { action: 'Bấm vào web khaihoanskincare.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    const link = page.locator('a[href*="khaihoanskincare.com"]').first();
     if (await isVisibleSafe(link)) {
       await link.scrollIntoViewIfNeeded().catch(() => {});
       await wait(600);
@@ -459,7 +459,7 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
 
   // Fallback 1: Click any available Khải Hoàn domain link
   if (!clickedLink) {
-    const fallbackLink = page.locator('a[href*="khaihoanskincare.com"], a[href*="khaihoanderma.com"], a[href*="facebook.com"][href*="khaihoan"]').first();
+    const fallbackLink = page.locator('a[href*="khaihoanderma.com"], a[href*="khaihoanskincare.com"], a[href*="facebook.com"][href*="khaihoan"]').first();
     if (await isVisibleSafe(fallbackLink)) {
       await fallbackLink.scrollIntoViewIfNeeded().catch(() => {});
       await wait(600);
@@ -471,8 +471,8 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
   // Fallback 2: Direct navigation if click failed
   if (!clickedLink) {
     const fallbackUrls = [
-      'https://khaihoanskincare.com/',
       'https://khaihoanderma.com/',
+      'https://khaihoanskincare.com/',
       'https://www.facebook.com/nhathuockhaihoan/',
     ];
     const url = fallbackUrls[Math.floor(Math.random() * fallbackUrls.length)];
@@ -482,27 +482,95 @@ async function performWebOrSocialEngagement(deadline, startMs, dwellSeconds) {
 
   await wait(4500 + randomInt(1000, 2000));
 
-  // 3. Deep dwell & browsing inside the target page
-  console.log('[map-stage4] Deep browsing on destination page...');
-  while (remainingMs(deadline) > 12000) {
+  // 3. DEEP DWELL & PRODUCT BROWSING ON TARGET WEBSITE
+  console.log('[map-stage4] Deep browsing & clicking products on destination page...');
+  
+  // Step 3A: Browse Homepage / Landing Page (25 - 40s)
+  for (let hs = 0; hs < 4; hs++) {
+    if (remainingMs(deadline) <= 15000) break;
     await moveMouseNaturally();
-    await safeMouseWheel(0, 320 + randomInt(100, 200));
-    const currentUrl = await page.url().catch(() => '');
-    const siteLabel = currentUrl.includes('facebook') ? 'Fanpage Facebook Khải Hoàn' : (currentUrl.includes('khaihoanskincare') ? 'Web khaihoanskincare.com' : 'Web khaihoanderma.com');
-    reportStep('map_interacting', { action: `Lướt đọc ${siteLabel}`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    await waitWithinBudget(3500 + randomInt(1500, 3500), deadline);
+    await safeMouseWheel(0, 320 + randomInt(80, 200));
+    const curUrl = await page.url().catch(() => '');
+    const label = curUrl.includes('facebook') ? 'Fanpage Facebook Khải Hoàn' : (curUrl.includes('khaihoanskincare') ? 'Web khaihoanskincare.com' : 'Web khaihoanderma.com');
+    reportStep('map_interacting', { action: `Lướt xem trang chủ ${label}`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
+  }
 
-    // If budget allows and on website, click into 1-2 product/article links
-    if (remainingMs(deadline) > 35000 && !currentUrl.includes('facebook') && Math.random() < 0.35) {
-      const subLinks = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], a[href*="/bang-gia/"], .product-title a, article a, h3 a');
-      const count = await subLinks.count();
+  // Step 3B: Click into 1st Product / Treatment Service Detail Page (40 - 60s)
+  const currentUrl = await page.url().catch(() => '');
+  if (!currentUrl.includes('facebook') && remainingMs(deadline) > 30000) {
+    console.log('[map-stage4] Clicking 1st product/article on website...');
+    const productSelectors = [
+      'a[href*="/san-pham/"]',
+      'a[href*="/product/"]',
+      'a[href*="/dich-vu/"]',
+      'a[href*="/bang-gia/"]',
+      '.product-title a',
+      '.woocommerce-loop-product__link',
+      'article a',
+      'h3.entry-title a',
+      '.wp-block-post-title a'
+    ];
+    
+    let clickedProduct = false;
+    for (const pSel of productSelectors) {
+      const pLinks = page.locator(pSel);
+      const count = await pLinks.count();
       if (count > 0) {
-        const idx = Math.floor(Math.random() * Math.min(count, 8));
-        console.log(`[map-stage4] Navigating to sub-article/product #${idx}...`);
-        await subLinks.nth(idx).click({ force: true }).catch(() => {});
-        await wait(3500);
+        const pIdx = Math.floor(Math.random() * Math.min(count, 6));
+        const chosenLink = pLinks.nth(pIdx);
+        const pText = (await chosenLink.innerText().catch(() => '')) || 'sản phẩm';
+        reportStep('map_interacting', { action: `Mở xem chi tiết: ${pText.trim().substring(0, 30)}...`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+        await chosenLink.scrollIntoViewIfNeeded().catch(() => {});
+        await wait(600);
+        await chosenLink.click({ force: true }).catch(() => {});
+        clickedProduct = true;
+        await wait(4000 + randomInt(1000, 2000));
+        break;
       }
     }
+
+    // Scroll & read product details (mô tả, thành phần, công dụng, giá)
+    if (clickedProduct) {
+      for (let ps = 0; ps < 5; ps++) {
+        if (remainingMs(deadline) <= 20000) break;
+        await moveMouseNaturally();
+        await safeMouseWheel(0, 280 + randomInt(80, 180));
+        reportStep('map_interacting', { action: 'Đọc công dụng, thành phần & giá sản phẩm', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+        await waitWithinBudget(4000 + randomInt(1500, 3000), deadline);
+      }
+
+      // Step 3C: Click into 2nd Related Product if time permits (30 - 50s)
+      if (remainingMs(deadline) > 30000) {
+        console.log('[map-stage4] Clicking 2nd related product on website...');
+        const relatedLinks = page.locator('.related a[href*="/san-pham/"], .up-sells a[href*="/san-pham/"], a[href*="/san-pham/"], .product-title a');
+        const rCount = await relatedLinks.count();
+        if (rCount > 0) {
+          const rIdx = Math.floor(Math.random() * Math.min(rCount, 4));
+          const rLink = relatedLinks.nth(rIdx);
+          const rText = (await rLink.innerText().catch(() => '')) || 'sản phẩm liên quan';
+          reportStep('map_interacting', { action: `Xem sản phẩm liên quan: ${rText.trim().substring(0, 30)}...`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+          await rLink.scrollIntoViewIfNeeded().catch(() => {});
+          await wait(600);
+          await rLink.click({ force: true }).catch(() => {});
+          await wait(4000);
+
+          while (remainingMs(deadline) > 10000) {
+            await moveMouseNaturally();
+            await safeMouseWheel(0, 300 + randomInt(80, 180));
+            reportStep('map_interacting', { action: 'Đọc chi tiết sản phẩm điều trị da', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+            await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
+          }
+        }
+      }
+    }
+  }
+
+  // Complete remaining budget with smooth human scrolling
+  while (remainingMs(deadline) > 10000) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 250 + randomInt(50, 150));
+    await waitWithinBudget(3000, deadline);
   }
 }
 
@@ -610,7 +678,7 @@ async function interactWithMapProfile(config) {
   }
 
   // ==========================================
-  // GIAI ĐOẠN 4: BẤM "THÔNG TIN KHÁC" / KHAIHOANSKINCARE / KHAIHOANDERMA / FACEBOOK (60 - 120s)
+  // GIAI ĐOẠN 4: BẤM "THÔNG TIN KHÁC" / KHAIHOANDERMA / KHAIHOANSKINCARE / FACEBOOK & LƯỚT SẢN PHẨM (60 - 120s)
   // ==========================================
   await performWebOrSocialEngagement(deadline, startMs, dwellSeconds);
 
