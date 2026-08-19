@@ -154,48 +154,90 @@ async function searchGoogle(keyword) {
   }
 }
 
-async function checkAndHandleSingleCardDirectly(config) {
-  const cardInfo = await page.evaluate(() => {
-    const headings = Array.from(document.querySelectorAll('div[data-attrid*="title"], div.VkpGBb, [role="heading"], div.rllt__details, g-card'));
-    for (const h of headings) {
-      const text = (h.innerText || '').toLowerCase();
-      if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('phan thiết'))) {
-        return { text: h.innerText.trim() };
+// STRICT Matcher: find button/card belonging exclusively to "Khải Hoàn Skincare"
+async function findAndClickTargetCardScoped(actionType) {
+  return await page.evaluate((type) => {
+    // Collect all place cards, knowledge panels, search cards
+    const cards = Array.from(document.querySelectorAll('div.VkpGBb, div.rllt__details, div[data-cid], g-card, div.I6TXqe, div.g, div[data-attrid]'));
+    
+    let targetCard = null;
+    for (const card of cards) {
+      const text = (card.innerText || '').toLowerCase();
+      // Must contain 'khải hoàn' AND relevant business cues
+      if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('01 vạn thủy tú') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
+        targetCard = card;
+        break;
       }
     }
-    return null;
-  });
 
-  if (!cardInfo) return false;
+    if (!targetCard) {
+      // Check for standalone knowledge panel
+      const kp = document.querySelector('div[data-attrid*="title"], div.kp-wholepage');
+      if (kp && (kp.innerText || '').toLowerCase().includes('khải hoàn')) {
+        targetCard = kp;
+      }
+    }
 
-  console.log(`[map] Found target business card on search page: "${cardInfo.text}"`);
-  
-  const dirButtons = page.locator('a:has-text("Chỉ đường"), button:has-text("Chỉ đường"), [data-value*="Directions"], [aria-label*="Chỉ đường"], a:has-text("Directions"), button:has-text("Directions")');
-  const webButtons = page.locator('a:has-text("Trang web"), button:has-text("Trang web"), [data-value*="Website"], [aria-label*="Trang web"], a:has-text("Website"), button:has-text("Website")');
+    if (!targetCard) return { success: false, reason: 'not_found' };
 
-  const hasDir = await isVisibleSafe(dirButtons.first());
-  const hasWeb = await isVisibleSafe(webButtons.first());
+    const cardName = targetCard.innerText.split('\n')[0].trim();
 
-  if (hasDir || hasWeb) {
-    const dwellSeconds = randomInt(
-      Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
-      Number(param('mapDwellMaxSeconds') || config.mapDwellMaxSeconds)
-    );
-    const deadline = Date.now() + dwellSeconds * 1000;
-    const startMs = Date.now();
+    if (type === 'directions') {
+      // Look for Directions button ONLY inside this matched target card
+      const btn = targetCard.querySelector('a[href*="maps/dir"], a:has-text("Chỉ đường"), button:has-text("Chỉ đường"), [data-value*="Directions"], [aria-label*="Chỉ đường"]') ||
+                  targetCard.parentElement?.querySelector('a:has-text("Chỉ đường"), button:has-text("Chỉ đường")');
+      if (btn) {
+        btn.scrollIntoView({ block: 'center' });
+        btn.click();
+        return { success: true, clicked: 'directions', name: cardName };
+      }
+    } else if (type === 'website') {
+      // Look for Website button ONLY inside this matched target card
+      const btn = targetCard.querySelector('a[href*="khaihoanderma.com"], a:has-text("Trang web"), button:has-text("Trang web"), [data-value*="Website"], [aria-label*="Trang web"]') ||
+                  targetCard.parentElement?.querySelector('a:has-text("Trang web"), button:has-text("Trang web")');
+      if (btn) {
+        btn.scrollIntoView({ block: 'center' });
+        btn.click();
+        return { success: true, clicked: 'website', name: cardName };
+      }
+    } else {
+      // Click the card title itself
+      const clickable = targetCard.querySelector('[role="heading"], a, div.dbg0pd') || targetCard;
+      clickable.scrollIntoView({ block: 'center' });
+      clickable.click();
+      return { success: true, clicked: 'card', name: cardName };
+    }
 
-    console.log(`[map-single] Starting comprehensive single-card interaction for ${dwellSeconds} seconds (~${Math.round(dwellSeconds/60)} minutes)...`);
-    reportStep('map_found', `Đã tìm thấy: ${cardInfo.text}`);
+    return { success: false, reason: 'button_not_found', name: cardName };
+  }, actionType);
+}
 
-    // --- PHASE 1: Directions & Interactive Map Navigation (60 - 90s) ---
-    if (hasDir && remainingMs(deadline) > 60000) {
-      console.log('[map-single] Phase 1: Clicking "Chỉ đường" (Directions)...');
+async function checkAndHandleSingleCardDirectly(config) {
+  // Check if Khải Hoàn Skincare card exists directly on search page
+  const testCheck = await findAndClickTargetCardScoped('check');
+  if (!testCheck || !testCheck.name || !testCheck.name.toLowerCase().includes('khải hoàn')) {
+    return false;
+  }
+
+  console.log(`[map] STRICT MATCH: Found target card on search page: "${testCheck.name}"`);
+  reportStep('map_found', `Đã tìm thấy: ${testCheck.name}`);
+
+  const dwellSeconds = randomInt(
+    Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
+    Number(param('mapDwellMaxSeconds') || config.mapDwellMaxSeconds)
+  );
+  const deadline = Date.now() + dwellSeconds * 1000;
+  const startMs = Date.now();
+
+  console.log(`[map-single] Starting single-card interaction for ${dwellSeconds} seconds (~${Math.round(dwellSeconds/60)} minutes)...`);
+
+  // --- PHASE 1: Directions & Map Navigation (60 - 90s) ---
+  if (remainingMs(deadline) > 60000) {
+    console.log('[map-single] Phase 1: Clicking scoped "Chỉ đường" for Khải Hoàn Skincare...');
+    const dirResult = await findAndClickTargetCardScoped('directions');
+    
+    if (dirResult && dirResult.success) {
       reportStep('map_interacting', { action: 'Xem bản đồ & tuyến đường Chỉ đường', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      
-      const btn = dirButtons.first();
-      await btn.scrollIntoViewIfNeeded().catch(() => {});
-      await wait(600);
-      await btn.click({ force: true }).catch(() => {});
       await wait(3000);
 
       // Pan & Zoom map around Phan Thiết
@@ -207,104 +249,73 @@ async function checkAndHandleSingleCardDirectly(config) {
         await waitWithinBudget(4000 + randomInt(2000, 4000), deadline);
       }
     }
+  }
 
-    // --- PHASE 2: Return & Explore Place Details / Reviews (45 - 60s) ---
-    if (remainingMs(deadline) > 60000) {
-      console.log('[map-single] Phase 2: Exploring Place details, photos, and reviews...');
-      reportStep('map_interacting', { action: 'Xem chi tiết đánh giá & ảnh Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      
-      await page.goBack().catch(() => {});
-      await wait(2500);
+  // --- PHASE 2: Return & Explore Place Details / Reviews (45 - 60s) ---
+  if (remainingMs(deadline) > 60000) {
+    console.log('[map-single] Phase 2: Exploring Place details, photos, and reviews...');
+    reportStep('map_interacting', { action: 'Xem chi tiết đánh giá & ảnh Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    
+    await page.goBack().catch(() => {});
+    await wait(2500);
 
-      // Scroll search page / place summary
-      for (let s = 0; s < 5; s++) {
-        if (remainingMs(deadline) <= 60000) break;
-        await moveMouseNaturally();
-        await safeMouseWheel(0, 300 + randomInt(100, 250));
-        reportStep('map_interacting', { action: 'Đọc đánh giá 5 sao của khách hàng', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
-      }
+    for (let s = 0; s < 5; s++) {
+      if (remainingMs(deadline) <= 60000) break;
+      await moveMouseNaturally();
+      await safeMouseWheel(0, 300 + randomInt(100, 250));
+      reportStep('map_interacting', { action: 'Đọc đánh giá 5 sao của khách hàng', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+      await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
     }
+  }
 
-    // --- PHASE 3: Website Deep Browsing (khaihoanderma.com) (90 - 150s) ---
-    if (hasWeb && remainingMs(deadline) > 30000) {
-      console.log('[map-single] Phase 3: Clicking "Trang web" (Website) for deep browsing...');
-      reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      
-      const webBtn = page.locator('a:has-text("Trang web"), button:has-text("Trang web"), [aria-label*="Trang web"]').first();
-      if (await isVisibleSafe(webBtn)) {
-        await webBtn.click({ force: true }).catch(() => {});
-        await wait(5000 + randomInt(1000, 3000));
-      } else {
-        await page.goto('https://khaihoanderma.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-      }
+  // --- PHASE 3: Website Deep Browsing (khaihoanderma.com) (90 - 150s) ---
+  if (remainingMs(deadline) > 30000) {
+    console.log('[map-single] Phase 3: Clicking scoped "Trang web" for Khải Hoàn Skincare...');
+    reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    
+    const webResult = await findAndClickTargetCardScoped('website');
+    if (!webResult || !webResult.success) {
+      await page.goto('https://khaihoanderma.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    }
+    await wait(4000 + randomInt(1000, 3000));
 
-      // Deep dwell on website: scroll home, visit products
-      while (remainingMs(deadline) > 15000) {
-        await moveMouseNaturally();
-        await safeMouseWheel(0, 350 + randomInt(100, 250));
-        reportStep('map_interacting', { action: 'Đọc bài viết & xem sản phẩm trên web', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await waitWithinBudget(4000 + randomInt(2000, 4000), deadline);
+    // Deep dwell on website: scroll home, visit products
+    while (remainingMs(deadline) > 15000) {
+      await moveMouseNaturally();
+      await safeMouseWheel(0, 350 + randomInt(100, 250));
+      reportStep('map_interacting', { action: 'Đọc bài viết & xem sản phẩm trên web', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+      await waitWithinBudget(4000 + randomInt(2000, 4000), deadline);
 
-        // Click a product or article link on the website if budget allows
-        if (remainingMs(deadline) > 45000 && Math.random() < 0.3) {
-          const productLinks = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], .product-title a, article a');
-          const count = await productLinks.count();
-          if (count > 0) {
-            const pickIndex = Math.floor(Math.random() * Math.min(count, 8));
-            console.log(`[map-single-web] Navigating to product link #${pickIndex}...`);
-            await productLinks.nth(pickIndex).click({ force: true }).catch(() => {});
-            await wait(4000);
-          }
+      if (remainingMs(deadline) > 45000 && Math.random() < 0.3) {
+        const productLinks = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], .product-title a, article a');
+        const count = await productLinks.count();
+        if (count > 0) {
+          const pickIndex = Math.floor(Math.random() * Math.min(count, 8));
+          console.log(`[map-single-web] Navigating to product link #${pickIndex}...`);
+          await productLinks.nth(pickIndex).click({ force: true }).catch(() => {});
+          await wait(4000);
         }
       }
     }
-
-    // Complete remaining budget
-    await waitWithinBudget(remainingMs(deadline), deadline);
-
-    console.log('[map-single] Finished complete single-card interaction successfully!');
-    reportStep('map_done', 'Hoàn tất tương tác Google Map & Trang web');
-    return { found: true, directCard: true };
   }
 
-  return false;
+  await waitWithinBudget(remainingMs(deadline), deadline);
+  console.log('[map-single] Finished single-card interaction successfully!');
+  reportStep('map_done', 'Hoàn tất tương tác Google Map & Trang web');
+  return { found: true, directCard: true };
 }
 
 async function findAndOpenMapProfile(config) {
   console.log('[map] Looking for Google Maps Local Pack or "Doanh nghiệp khác"...');
   reportStep('map_search', 'Đang tìm kiếm Profile Google Map...');
 
-  // 0. Check if Google returned a single local card with "Trang web" / "Chỉ đường"
+  // 0. Strict check: Single local card / Knowledge Panel on search page
   const singleCardResult = await checkAndHandleSingleCardDirectly(config);
   if (singleCardResult && singleCardResult.directCard) {
     return singleCardResult;
   }
 
-  // 1. Check if target business is directly in the initial 3-pack on the search page
-  const directPackCandidate = await page.evaluate(() => {
-    const elements = Array.from(document.querySelectorAll('div[data-async-context*="local_results"] [role="heading"], div[data-attrid*="local"] [role="heading"], g-card, div.rllt__details'));
-    for (let i = 0; i < elements.length; i++) {
-      const el = elements[i];
-      const text = el.innerText || '';
-      if (text.toLowerCase().includes('khải hoàn')) {
-        return { index: i, text: text.trim() };
-      }
-    }
-    return null;
-  });
-
-  if (directPackCandidate) {
-    console.log(`[map] Found target directly in initial 3-pack: "${directPackCandidate.text}"`);
-    const packItems = page.locator('div[data-async-context*="local_results"] [role="heading"], div[data-attrid*="local"] [role="heading"], div.rllt__details');
-    if (await packItems.count() > directPackCandidate.index) {
-      await packItems.nth(directPackCandidate.index).click();
-      await wait(3000);
-      return { found: true, directCard: false };
-    }
-  }
-
-  // 2. Click "Doanh nghiệp khác >" (More places)
+  // 1. Click "Doanh nghiệp khác >" (More places) to open full list
   console.log('[map] Clicking "Doanh nghiệp khác" / "More places" button...');
   const morePlacesSelectors = [
     'a:has-text("Doanh nghiệp khác")',
@@ -347,10 +358,10 @@ async function findAndOpenMapProfile(config) {
 
   await wait(3500 + randomInt(500, 1500));
 
-  // 3. Search inside Local Finder / Places View
+  // 2. Search inside Local Finder / Places View (Scan pages 1 -> 5)
   const maxPages = 5;
   for (let pageIndex = 1; pageIndex <= maxPages; pageIndex++) {
-    console.log(`[map] Scanning Places list (Page ${pageIndex}/${maxPages})...`);
+    console.log(`[map] Scanning Places list strictly (Page ${pageIndex}/${maxPages})...`);
     reportStep('map_scanning', `Đang tìm Map trang ${pageIndex}...`);
 
     for (let scrollStep = 0; scrollStep < 5; scrollStep++) {
@@ -359,38 +370,28 @@ async function findAndOpenMapProfile(config) {
       await wait(800 + randomInt(300, 700));
     }
 
-    const foundIndex = await page.evaluate(() => {
+    const foundTarget = await page.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb'));
       for (let i = 0; i < cards.length; i++) {
         const text = (cards[i].innerText || '').toLowerCase();
+        // STRICT check: MUST contain "khải hoàn"
         if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
-          return i;
+          cards[i].scrollIntoView({ block: 'center' });
+          cards[i].click();
+          return { found: true, index: i, name: cards[i].innerText.split('\n')[0] };
         }
       }
-      for (let i = 0; i < cards.length; i++) {
-        const text = (cards[i].innerText || '').toLowerCase();
-        if (text.includes('khải hoàn')) {
-          return i;
-        }
-      }
-      return -1;
+      return { found: false };
     });
 
-    if (foundIndex >= 0) {
-      console.log(`[map] TARGET FOUND at index ${foundIndex} on page ${pageIndex}!`);
-      reportStep('map_found', 'Đã tìm thấy Profile Map! Đang mở chi tiết...');
-
-      const cards = page.locator('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb');
-      if (await cards.count() > foundIndex) {
-        await cards.nth(foundIndex).scrollIntoViewIfNeeded().catch(() => {});
-        await wait(600);
-        await cards.nth(foundIndex).click({ force: true });
-        await wait(3000 + randomInt(500, 1500));
-        return { found: true, directCard: false };
-      }
+    if (foundTarget && foundTarget.found) {
+      console.log(`[map] STRICT TARGET FOUND & CLICKED: "${foundTarget.name}" on page ${pageIndex}!`);
+      reportStep('map_found', `Đã tìm thấy Map: ${foundTarget.name}! Đang mở chi tiết...`);
+      await wait(3500 + randomInt(500, 1500));
+      return { found: true, directCard: false };
     }
 
-    console.log(`[map] Target not found on page ${pageIndex}, checking Next Page button...`);
+    console.log(`[map] Khải Hoàn not found on page ${pageIndex}, checking Next Page button...`);
     const nextBtn = page.locator('a#pnnext, button#pnnext, td.d6cvqb a, a:has-text("Tiếp"), button[aria-label*="tiếp"]').first();
     if (await isVisibleSafe(nextBtn)) {
       await nextBtn.scrollIntoViewIfNeeded().catch(() => {});
@@ -403,8 +404,8 @@ async function findAndOpenMapProfile(config) {
     }
   }
 
-  // Fallback direct search
-  console.log('[map] Fallback: Searching direct business name on Google...');
+  // 3. Fallback: Search directly for brand on Google Maps
+  console.log('[map] Fallback: Searching exact brand name "Nhà thuốc Khải Hoàn Skincare Phan Thiết"...');
   const searchInput = page.locator('textarea[name="q"], input[name="q"]').first();
   if (await isVisibleSafe(searchInput)) {
     await searchInput.click();
@@ -413,10 +414,21 @@ async function findAndOpenMapProfile(config) {
     await searchInput.press('Enter');
     await wait(4000);
 
-    const firstResult = page.locator('div[role="heading"]:has-text("Khải Hoàn"), div.rllt__details:has-text("Khải Hoàn")').first();
-    if (await isVisibleSafe(firstResult)) {
-      await firstResult.click();
-      await wait(3000);
+    const directResult = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('div[role="heading"], div.rllt__details, div.VkpGBb, g-card'));
+      for (const el of candidates) {
+        const text = (el.innerText || '').toLowerCase();
+        if (text.includes('khải hoàn')) {
+          el.scrollIntoView({ block: 'center' });
+          el.click();
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (directResult) {
+      await wait(3500);
       return { found: true, directCard: false };
     }
   }
