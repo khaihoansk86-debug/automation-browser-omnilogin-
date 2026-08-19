@@ -115,6 +115,16 @@ const DEFAULT_APP_ALIASES: AppAlias[] = [
     appId: 'facebook-traffic-derma',
     name: 'Facebook Referral QA - Khải Hoàn Derma',
   },
+  {
+    alias: 'map',
+    appId: 'google-map-traffic-derma',
+    name: 'Bơm Tương Tác Google Map - Khải Hoàn Skincare',
+  },
+  {
+    alias: 'gmap',
+    appId: 'google-map-traffic-derma',
+    name: 'Bơm Tương Tác Google Map - Khải Hoàn Skincare',
+  },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
@@ -807,17 +817,20 @@ function helpText(defaultAppId: string) {
     '',
     '<b>2. Hướng dẫn chạy 1 profile</b>',
     `• Đánh giá & Index GSC: ${code('/run app=index profile=37')}`,
+    `• Bơm Google Map: ${code('/run app=map profile=37')}`,
     `• Facebook Referral QA: ${code('/run app=fb profile=37')}`,
     `• Chạy Rank QA: ${code('/run app=derma profile=37')}`,
     `• Nuôi tài khoản: ${code('/run app=nuoi profile=1')}`,
     '',
     '<b>3. Hướng dẫn chạy hàng loạt (hỗ trợ dải profile, ví dụ 37-66)</b>',
+    `• Bơm Google Map dải: ${code('/run app=map profiles=37-66 delay=60-120 close=1')}`,
+    `• Chạy Facebook Referral QA dải: ${code('/run app=fb profiles=37-66 delay=60-120 close=1')}`,
     `• Chạy Đánh giá & Index GSC dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
     `• Nuôi dải tài khoản: ${code('/run app=nuoi profiles=1-10 delay=60 close=1')}`,
     `• Chạy Rank QA dải: ${code('/run app=derma profiles=37-66 delay=60-180 close=1')}`,
     '',
     '<b>4. Giải thích các tham số chính</b>',
-    `• ${code('app=...')} : Tên kịch bản cần chạy (${code('derma')} / ${code('nuoi')} / ${code('index')} / ${code('fb')})`,
+    `• ${code('app=...')} : Tên kịch bản cần chạy (${code('map')} / ${code('fb')} / ${code('derma')} / ${code('index')} / ${code('nuoi')})`,
     `• ${code('profile=...')} : Tên hoặc ID của 1 profile duy nhất`,
     `• ${code('profiles=...')} : Dải profile (${code('37-66')}, hoặc danh sách ${code('1,2,3')}, hoặc ${code('all')})`,
     `• ${code('delay=...')} : Độ trễ ngẫu nhiên giữa các profile (ví dụ: ${code('60-120')} giây)`,
@@ -840,11 +853,11 @@ function listText(aliases: AppAlias[], defaultAppId: string) {
     ...aliases.map((item) => `${code(item.alias)} → ${code(item.appId)} - ${escapeHtml(item.name)}`),
     '',
     '<b>Lệnh hay dùng</b>',
+    code('/run app=map profiles=37-66 delay=60-90 close=1'),
+    code('/run app=fb profiles=37-66 delay=60-90 close=1'),
+    code('/run app=derma profiles=37-66 delay=60 close=1'),
+    code('/run app=index profile=37 close=1'),
     code('/run app=nuoi profile=1 close=1'),
-    code('/run app=fb profile=37 close=1'),
-    code('/run app=derma profiles=1,2,3 delay=60 close=1'),
-    code('/run app=index profile=37 close=1'),
-    code('/run app=index profile=37 close=1'),
     code('/status'),
     code('/stop'),
     '',
@@ -1099,6 +1112,10 @@ const defaultMenuKeyboard = {
 
 const defaultInlineKeyboard = {
   inline_keyboard: [
+    [
+      { text: '🗺️ Bơm Google Map (37-66)', callback_data: '/run app=map profiles=37-66 delay=60-90' },
+      { text: '🗺️ Bơm Map (Profile 37)', callback_data: '/run app=map profile=37' }
+    ],
     [
       { text: '📘 Chạy Facebook Referral QA (37-66)', callback_data: '/run app=fb profiles=37-66 delay=60-90' }
     ],
