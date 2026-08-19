@@ -149,7 +149,7 @@ async function maybeAcceptGoogleConsent() {
       const btn = page.locator(selector).first();
       if (await isVisibleSafe(btn)) {
         console.log('[google] Accepting consent dialog...');
-        await btn.click();
+        await btn.click().catch(() => {});
         await wait(1500);
         break;
       }
@@ -163,16 +163,41 @@ async function searchGoogle(keyword) {
   await page.setExtraHTTPHeaders({
     'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
   }).catch(() => {});
-  await page.goto('https://www.google.com/?hl=vi&gl=vn', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  
+  try {
+    await page.goto('https://www.google.com/?hl=vi&gl=vn', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  } catch (gotoErr) {
+    console.log('[map] page.goto warning, attempting direct search url:', gotoErr.message || String(gotoErr));
+    await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}&hl=vi&gl=vn`, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await wait(3000);
+    return;
+  }
+
   await maybeAcceptGoogleConsent();
   await wait(1500);
 
   console.log(`[map] Searching keyword: "${keyword}"`);
   reportStep('search_keyword', keyword);
   
-  const searchInput = page.locator('textarea[name="q"], input[name="q"]').first();
-  await searchInput.waitFor({ state: 'visible', timeout: 20000 });
-  await searchInput.click();
+  const searchInput = page.locator('textarea[name="q"], input[name="q"], input[aria-label*="Tìm kiếm"]').first();
+  let inputReady = false;
+  for (let i = 0; i < 6; i++) {
+    if (await isVisibleSafe(searchInput)) {
+      inputReady = true;
+      break;
+    }
+    await wait(1500);
+    await maybeAcceptGoogleConsent();
+  }
+
+  if (!inputReady) {
+    console.log('[map] Search input not found, navigating directly to search result URL...');
+    await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}&hl=vi&gl=vn`, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await wait(3000);
+    return;
+  }
+
+  await searchInput.click().catch(() => {});
   await wait(300 + randomInt(100, 300));
 
   // Natural human typing
@@ -180,15 +205,15 @@ async function searchGoogle(keyword) {
     await page.keyboard.type(char, { delay: randomInt(40, 90) });
   }
   await wait(600 + randomInt(200, 600));
-  await searchInput.press('Enter');
+  await searchInput.press('Enter').catch(() => {});
 
-  await page.waitForLoadState('domcontentloaded');
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
   await wait(2500 + randomInt(500, 1500));
 
   // Check captcha
   const bodyText = await page.evaluate(() => document.body.innerText).catch(() => '');
   if (bodyText.includes('unusual traffic') || bodyText.includes('không phải người máy') || bodyText.includes('recaptcha')) {
-    throw new Error('GOOGLE_CAPTCHA_DETECTED: Google yêu cầu xác minh CAPTCHA');
+    throw new Error('Google yêu cầu xác minh CAPTCHA (Cần xoay IP mới)');
   }
 }
 
@@ -318,7 +343,7 @@ async function findAndOpenMapProfile(config) {
     if (await isVisibleSafe(btn)) {
       await btn.scrollIntoViewIfNeeded().catch(() => {});
       await wait(500);
-      await btn.click({ force: true });
+      await btn.click({ force: true }).catch(() => {});
       clickedMore = true;
       console.log(`[map] Clicked more places via selector: ${selector}`);
       break;
@@ -368,7 +393,7 @@ async function findAndOpenMapProfile(config) {
     if (await isVisibleSafe(nextBtn)) {
       await nextBtn.scrollIntoViewIfNeeded().catch(() => {});
       await wait(600);
-      await nextBtn.click({ force: true });
+      await nextBtn.click({ force: true }).catch(() => {});
       await wait(3500 + randomInt(500, 1500));
     } else {
       console.log('[map] No Next Page button found. End of places list.');
@@ -380,10 +405,10 @@ async function findAndOpenMapProfile(config) {
   console.log('[map] Fallback: Searching exact brand name "Nhà thuốc Khải Hoàn Skincare Phan Thiết"...');
   const searchInput = page.locator('textarea[name="q"], input[name="q"]').first();
   if (await isVisibleSafe(searchInput)) {
-    await searchInput.click();
+    await searchInput.click().catch(() => {});
     await wait(400);
-    await searchInput.fill(config.targetBusinessName + ' ' + config.targetLocationKeyword);
-    await searchInput.press('Enter');
+    await searchInput.fill(config.targetBusinessName + ' ' + config.targetLocationKeyword).catch(() => {});
+    await searchInput.press('Enter').catch(() => {});
     await wait(4000);
 
     const directResult = await clickTargetPlaceCardStrictly();
@@ -404,15 +429,15 @@ async function reopenKhảiHoànProfileOnMaps(config) {
   
   const mapsSearchInput = page.locator('input#searchboxinput, input[name="q"], input[aria-label*="Tìm kiếm"]').first();
   if (await isVisibleSafe(mapsSearchInput)) {
-    await mapsSearchInput.click();
+    await mapsSearchInput.click().catch(() => {});
     await wait(300);
-    await mapsSearchInput.fill('');
+    await mapsSearchInput.fill('').catch(() => {});
     const query = 'Nhà thuốc Khải Hoàn Skincare Phan Thiết';
     for (const char of query) {
       await page.keyboard.type(char, { delay: randomInt(30, 60) });
     }
     await wait(400);
-    await mapsSearchInput.press('Enter');
+    await mapsSearchInput.press('Enter').catch(() => {});
     await wait(3500 + randomInt(500, 1500));
   } else {
     await page.goto('https://www.google.com/maps/search/Nhà+thuốc+Khải+Hoàn+Skincare+Phan+Thiết?hl=vi', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
@@ -631,14 +656,14 @@ async function interactWithMapProfile(config) {
     // Fill origin input with human typing
     const originInput = page.locator('div#directions-searchbox-0 input, input[placeholder*="bắt đầu"], input[aria-label*="bắt đầu"], input[placeholder*="Starting point"], input[aria-label*="Starting point"], input.tactile-searchbox-input').first();
     if (await isVisibleSafe(originInput)) {
-      await originInput.click();
+      await originInput.click().catch(() => {});
       await wait(400);
-      await originInput.fill('');
+      await originInput.fill('').catch(() => {});
       for (const char of startingPoint) {
         await page.keyboard.type(char, { delay: randomInt(35, 75) });
       }
       await wait(600);
-      await originInput.press('Enter');
+      await originInput.press('Enter').catch(() => {});
       await wait(2500 + randomInt(500, 1500));
 
       const suggestion = page.locator('div[role="listbox"] div[role="option"], ul[role="listbox"] li, div.sbtc').first();
@@ -759,4 +784,11 @@ async function main() {
   } catch {}
 }
 
-await main();
+try {
+  await main();
+} catch (fatalError) {
+  const message = fatalError?.message || String(fatalError);
+  console.error('[map-fatal-error]', message);
+  reportStep('error', message);
+  throw fatalError;
+}
