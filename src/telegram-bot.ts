@@ -1113,8 +1113,7 @@ const defaultMenuKeyboard = {
 const defaultInlineKeyboard = {
   inline_keyboard: [
     [
-      { text: '🗺️ Bơm Google Map (37-66)', callback_data: '/run app=map profiles=37-66 delay=60-90' },
-      { text: '🗺️ Bơm Map (Profile 37)', callback_data: '/run app=map profile=37' }
+      { text: '🗺️ Bơm Google Map (37-66)', callback_data: '/run app=map profiles=37-66 delay=60-90' }
     ],
     [
       { text: '📘 Chạy Facebook Referral QA (37-66)', callback_data: '/run app=fb profiles=37-66 delay=60-90' }
@@ -1159,6 +1158,10 @@ async function runLocalAiAppScript(
     statusLines.search = '⚪ Tìm kiếm Fanpage Khải Hoàn Derma';
     statusLines.rank = '⚪ Bốc số bài 1-10 & Theo dõi bộ đếm';
     statusLines.audit = '⚪ Tương tác ở web Derma';
+  } else if (app.appId === 'google-map-traffic-derma') {
+    statusLines.search = '⚪ Mở Google & tìm từ khóa theo file Desktop';
+    statusLines.find = '⚪ Quét & tìm Map Khải Hoàn Skincare';
+    statusLines.interact = '⚪ Tương tác xem ảnh, đánh giá, giờ mở cửa (1.5 - 3p)';
   } else {
     statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
     statusLines.search = '⚪ Tìm kiếm từ khóa Derma';
@@ -1294,6 +1297,42 @@ async function runLocalAiAppScript(
         statusLines.search,
         statusLines.rank,
         statusLines.audit,
+        `--------------------------------------------`,
+        `<i>Cập nhật liên tục từ trình duyệt...</i>`
+      ].join('\n');
+    }
+
+    if (app.appId === 'google-map-traffic-derma') {
+      if (currentStep === 'google_open') {
+        statusLines.search = `🔵 Đang mở Google tìm kiếm...`;
+      } else if (currentStep === 'search_keyword') {
+        statusLines.search = `🟢 Đang tìm từ khóa: <b>${escapeHtml(detail || '')}</b>`;
+        statusLines.find = `🔵 Đang quét danh sách Doanh nghiệp...`;
+      } else if (currentStep === 'map_search' || currentStep === 'map_scanning') {
+        statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+        statusLines.find = `🔵 ${escapeHtml(detail || 'Đang quét danh sách Doanh nghiệp khác...')}`;
+      } else if (currentStep === 'map_found') {
+        statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+        statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
+        statusLines.interact = `🔵 Đang tương tác xem ảnh, đánh giá...`;
+      } else if (currentStep === 'map_interacting') {
+        statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+        statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
+        statusLines.interact = `🔵 ${escapeHtml(detail || 'Đang tương tác sâu với Profile Map...')}`;
+      } else if (currentStep === 'map_done') {
+        statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+        statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
+        statusLines.interact = `🟢 Hoàn tất tương tác Google Map`;
+      } else if (currentStep === 'map_not_found') {
+        statusLines.find = `⚠️ Không tìm thấy Profile Map trong kết quả`;
+      }
+
+      return [
+        `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
+        `--------------------------------------------`,
+        statusLines.search,
+        statusLines.find,
+        statusLines.interact,
         `--------------------------------------------`,
         `<i>Cập nhật liên tục từ trình duyệt...</i>`
       ].join('\n');
