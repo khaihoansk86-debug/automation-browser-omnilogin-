@@ -154,168 +154,40 @@ async function searchGoogle(keyword) {
   }
 }
 
-// STRICT Matcher: find button/card belonging exclusively to "Khải Hoàn Skincare"
-async function findAndClickTargetCardScoped(actionType) {
-  return await page.evaluate((type) => {
-    // Collect all place cards, knowledge panels, search cards
-    const cards = Array.from(document.querySelectorAll('div.VkpGBb, div.rllt__details, div[data-cid], g-card, div.I6TXqe, div.g, div[data-attrid]'));
+// Find and click strictly on Khải Hoàn Skincare card to OPEN the Profile Details
+async function clickTargetPlaceCardStrictly() {
+  return await page.evaluate(() => {
+    // 1. Scan all place cards and headings on page
+    const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb, div.dbg0pd, g-card, div.I6TXqe, div.g'));
     
-    let targetCard = null;
     for (const card of cards) {
       const text = (card.innerText || '').toLowerCase();
-      // Must contain 'khải hoàn' AND relevant business cues
-      if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('01 vạn thủy tú') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
-        targetCard = card;
-        break;
+      // Must contain 'khải hoàn'
+      if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
+        const clickable = card.querySelector('[role="heading"], a, div.dbg0pd, span') || card;
+        clickable.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        clickable.click();
+        return { success: true, name: card.innerText.split('\n')[0].trim() };
       }
     }
-
-    if (!targetCard) {
-      // Check for standalone knowledge panel
-      const kp = document.querySelector('div[data-attrid*="title"], div.kp-wholepage');
-      if (kp && (kp.innerText || '').toLowerCase().includes('khải hoàn')) {
-        targetCard = kp;
-      }
-    }
-
-    if (!targetCard) return { success: false, reason: 'not_found' };
-
-    const cardName = targetCard.innerText.split('\n')[0].trim();
-
-    if (type === 'directions') {
-      // Look for Directions button ONLY inside this matched target card
-      const btn = targetCard.querySelector('a[href*="maps/dir"], a:has-text("Chỉ đường"), button:has-text("Chỉ đường"), [data-value*="Directions"], [aria-label*="Chỉ đường"]') ||
-                  targetCard.parentElement?.querySelector('a:has-text("Chỉ đường"), button:has-text("Chỉ đường")');
-      if (btn) {
-        btn.scrollIntoView({ block: 'center' });
-        btn.click();
-        return { success: true, clicked: 'directions', name: cardName };
-      }
-    } else if (type === 'website') {
-      // Look for Website button ONLY inside this matched target card
-      const btn = targetCard.querySelector('a[href*="khaihoanderma.com"], a:has-text("Trang web"), button:has-text("Trang web"), [data-value*="Website"], [aria-label*="Trang web"]') ||
-                  targetCard.parentElement?.querySelector('a:has-text("Trang web"), button:has-text("Trang web")');
-      if (btn) {
-        btn.scrollIntoView({ block: 'center' });
-        btn.click();
-        return { success: true, clicked: 'website', name: cardName };
-      }
-    } else {
-      // Click the card title itself
-      const clickable = targetCard.querySelector('[role="heading"], a, div.dbg0pd') || targetCard;
-      clickable.scrollIntoView({ block: 'center' });
-      clickable.click();
-      return { success: true, clicked: 'card', name: cardName };
-    }
-
-    return { success: false, reason: 'button_not_found', name: cardName };
-  }, actionType);
-}
-
-async function checkAndHandleSingleCardDirectly(config) {
-  // Check if Khải Hoàn Skincare card exists directly on search page
-  const testCheck = await findAndClickTargetCardScoped('check');
-  if (!testCheck || !testCheck.name || !testCheck.name.toLowerCase().includes('khải hoàn')) {
-    return false;
-  }
-
-  console.log(`[map] STRICT MATCH: Found target card on search page: "${testCheck.name}"`);
-  reportStep('map_found', `Đã tìm thấy: ${testCheck.name}`);
-
-  const dwellSeconds = randomInt(
-    Number(param('mapDwellMinSeconds') || config.mapDwellMinSeconds),
-    Number(param('mapDwellMaxSeconds') || config.mapDwellMaxSeconds)
-  );
-  const deadline = Date.now() + dwellSeconds * 1000;
-  const startMs = Date.now();
-
-  console.log(`[map-single] Starting single-card interaction for ${dwellSeconds} seconds (~${Math.round(dwellSeconds/60)} minutes)...`);
-
-  // --- PHASE 1: Directions & Map Navigation (60 - 90s) ---
-  if (remainingMs(deadline) > 60000) {
-    console.log('[map-single] Phase 1: Clicking scoped "Chỉ đường" for Khải Hoàn Skincare...');
-    const dirResult = await findAndClickTargetCardScoped('directions');
-    
-    if (dirResult && dirResult.success) {
-      reportStep('map_interacting', { action: 'Xem bản đồ & tuyến đường Chỉ đường', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      await wait(3000);
-
-      // Pan & Zoom map around Phan Thiết
-      for (let s = 0; s < 8; s++) {
-        if (remainingMs(deadline) <= 90000) break;
-        await moveMouseNaturally();
-        await safeMouseWheel(0, randomInt(-250, 250));
-        reportStep('map_interacting', { action: 'Lướt xem bản đồ Phan Thiết', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await waitWithinBudget(4000 + randomInt(2000, 4000), deadline);
-      }
-    }
-  }
-
-  // --- PHASE 2: Return & Explore Place Details / Reviews (45 - 60s) ---
-  if (remainingMs(deadline) > 60000) {
-    console.log('[map-single] Phase 2: Exploring Place details, photos, and reviews...');
-    reportStep('map_interacting', { action: 'Xem chi tiết đánh giá & ảnh Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    
-    await page.goBack().catch(() => {});
-    await wait(2500);
-
-    for (let s = 0; s < 5; s++) {
-      if (remainingMs(deadline) <= 60000) break;
-      await moveMouseNaturally();
-      await safeMouseWheel(0, 300 + randomInt(100, 250));
-      reportStep('map_interacting', { action: 'Đọc đánh giá 5 sao của khách hàng', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
-    }
-  }
-
-  // --- PHASE 3: Website Deep Browsing (khaihoanderma.com) (90 - 150s) ---
-  if (remainingMs(deadline) > 30000) {
-    console.log('[map-single] Phase 3: Clicking scoped "Trang web" for Khải Hoàn Skincare...');
-    reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    
-    const webResult = await findAndClickTargetCardScoped('website');
-    if (!webResult || !webResult.success) {
-      await page.goto('https://khaihoanderma.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-    }
-    await wait(4000 + randomInt(1000, 3000));
-
-    // Deep dwell on website: scroll home, visit products
-    while (remainingMs(deadline) > 15000) {
-      await moveMouseNaturally();
-      await safeMouseWheel(0, 350 + randomInt(100, 250));
-      reportStep('map_interacting', { action: 'Đọc bài viết & xem sản phẩm trên web', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-      await waitWithinBudget(4000 + randomInt(2000, 4000), deadline);
-
-      if (remainingMs(deadline) > 45000 && Math.random() < 0.3) {
-        const productLinks = page.locator('a[href*="/san-pham/"], a[href*="/dich-vu/"], a[href*="/bai-viet/"], .product-title a, article a');
-        const count = await productLinks.count();
-        if (count > 0) {
-          const pickIndex = Math.floor(Math.random() * Math.min(count, 8));
-          console.log(`[map-single-web] Navigating to product link #${pickIndex}...`);
-          await productLinks.nth(pickIndex).click({ force: true }).catch(() => {});
-          await wait(4000);
-        }
-      }
-    }
-  }
-
-  await waitWithinBudget(remainingMs(deadline), deadline);
-  console.log('[map-single] Finished single-card interaction successfully!');
-  reportStep('map_done', 'Hoàn tất tương tác Google Map & Trang web');
-  return { found: true, directCard: true };
+    return { success: false };
+  });
 }
 
 async function findAndOpenMapProfile(config) {
   console.log('[map] Looking for Google Maps Local Pack or "Doanh nghiệp khác"...');
   reportStep('map_search', 'Đang tìm kiếm Profile Google Map...');
 
-  // 0. Strict check: Single local card / Knowledge Panel on search page
-  const singleCardResult = await checkAndHandleSingleCardDirectly(config);
-  if (singleCardResult && singleCardResult.directCard) {
-    return singleCardResult;
+  // 1. Check if Khải Hoàn Skincare is directly visible on the search page
+  const directClick = await clickTargetPlaceCardStrictly();
+  if (directClick && directClick.success) {
+    console.log(`[map] Clicked directly on search page: "${directClick.name}"`);
+    reportStep('map_found', `Đã tìm thấy: ${directClick.name}! Đang mở Profile...`);
+    await wait(3500 + randomInt(500, 1500));
+    return true;
   }
 
-  // 1. Click "Doanh nghiệp khác >" (More places) to open full list
+  // 2. Click "Doanh nghiệp khác >" (More places) to open full list
   console.log('[map] Clicking "Doanh nghiệp khác" / "More places" button...');
   const morePlacesSelectors = [
     'a:has-text("Doanh nghiệp khác")',
@@ -358,37 +230,27 @@ async function findAndOpenMapProfile(config) {
 
   await wait(3500 + randomInt(500, 1500));
 
-  // 2. Search inside Local Finder / Places View (Scan pages 1 -> 5)
+  // 3. Search inside Local Finder / Places View (Scan pages 1 -> 5)
   const maxPages = 5;
   for (let pageIndex = 1; pageIndex <= maxPages; pageIndex++) {
     console.log(`[map] Scanning Places list strictly (Page ${pageIndex}/${maxPages})...`);
     reportStep('map_scanning', `Đang tìm Map trang ${pageIndex}...`);
 
+    // Smoothly scroll down the places list on left side
+    const leftPanel = page.locator('div[role="region"], div.m6QErb, div.section-layout, div#pane, div.VkpGBb').first();
     for (let scrollStep = 0; scrollStep < 5; scrollStep++) {
       await moveMouseNaturally();
-      await safeMouseWheel(0, 350 + randomInt(100, 300));
+      await safeMouseWheel(0, 300 + randomInt(100, 200));
       await wait(800 + randomInt(300, 700));
     }
 
-    const foundTarget = await page.evaluate(() => {
-      const cards = Array.from(document.querySelectorAll('div[jscontroller] [role="heading"], div.rllt__details, div[data-cid], div.VkpGBb'));
-      for (let i = 0; i < cards.length; i++) {
-        const text = (cards[i].innerText || '').toLowerCase();
-        // STRICT check: MUST contain "khải hoàn"
-        if (text.includes('khải hoàn') && (text.includes('skincare') || text.includes('spa') || text.includes('nhà thuốc') || text.includes('vạn thủy tú') || text.includes('phan thiết'))) {
-          cards[i].scrollIntoView({ block: 'center' });
-          cards[i].click();
-          return { found: true, index: i, name: cards[i].innerText.split('\n')[0] };
-        }
-      }
-      return { found: false };
-    });
-
-    if (foundTarget && foundTarget.found) {
-      console.log(`[map] STRICT TARGET FOUND & CLICKED: "${foundTarget.name}" on page ${pageIndex}!`);
-      reportStep('map_found', `Đã tìm thấy Map: ${foundTarget.name}! Đang mở chi tiết...`);
-      await wait(3500 + randomInt(500, 1500));
-      return { found: true, directCard: false };
+    // STRICT Search & Click on Khải Hoàn Skincare
+    const cardClickResult = await clickTargetPlaceCardStrictly();
+    if (cardClickResult && cardClickResult.success) {
+      console.log(`[map] STRICT TARGET FOUND & CLICKED: "${cardClickResult.name}" on page ${pageIndex}!`);
+      reportStep('map_found', `Đã mở Profile Map: ${cardClickResult.name}!`);
+      await wait(4000 + randomInt(1000, 2000));
+      return true;
     }
 
     console.log(`[map] Khải Hoàn not found on page ${pageIndex}, checking Next Page button...`);
@@ -404,7 +266,7 @@ async function findAndOpenMapProfile(config) {
     }
   }
 
-  // 3. Fallback: Search directly for brand on Google Maps
+  // 4. Fallback: Search directly for brand on Google Maps
   console.log('[map] Fallback: Searching exact brand name "Nhà thuốc Khải Hoàn Skincare Phan Thiết"...');
   const searchInput = page.locator('textarea[name="q"], input[name="q"]').first();
   if (await isVisibleSafe(searchInput)) {
@@ -414,22 +276,11 @@ async function findAndOpenMapProfile(config) {
     await searchInput.press('Enter');
     await wait(4000);
 
-    const directResult = await page.evaluate(() => {
-      const candidates = Array.from(document.querySelectorAll('div[role="heading"], div.rllt__details, div.VkpGBb, g-card'));
-      for (const el of candidates) {
-        const text = (el.innerText || '').toLowerCase();
-        if (text.includes('khải hoàn')) {
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return true;
-        }
-      }
-      return false;
-    });
-
-    if (directResult) {
+    const directResult = await clickTargetPlaceCardStrictly();
+    if (directResult && directResult.success) {
+      console.log(`[map] Fallback clicked target: "${directResult.name}"`);
       await wait(3500);
-      return { found: true, directCard: false };
+      return true;
     }
   }
 
@@ -453,68 +304,14 @@ async function interactWithMapProfile(config) {
     if (remainingMs(deadline) <= 20000) break;
     await moveMouseNaturally();
     await safeMouseWheel(0, 250 + randomInt(50, 200));
-    reportStep('map_interacting', { action: 'Xem địa chỉ, giờ mở cửa & hotline', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    await waitWithinBudget(3000 + randomInt(1500, 3000), deadline);
+    reportStep('map_interacting', { action: 'Xem địa chỉ 01 Vạn Thủy Tú, giờ mở cửa & hotline', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    await waitWithinBudget(3500 + randomInt(1500, 3000), deadline);
   }
 
-  // 2. Interacting with Top Action Buttons (Website, Directions, Save, Share, Call) (45 - 60s)
-  if (remainingMs(deadline) > 60000) {
-    const actionChoices = ['directions', 'share', 'save', 'website_hover', 'call_hover'];
-    const chosenAction = actionChoices[Math.floor(Math.random() * actionChoices.length)];
-    console.log(`[map-interaction] 2. Performing top action button: ${chosenAction}...`);
-
-    if (chosenAction === 'directions') {
-      const dirBtn = page.locator('button:has-text("Directions"), button:has-text("Đường đi"), a:has-text("Directions"), a:has-text("Đường đi"), [data-value*="Directions"], [aria-label*="Đường đi"]').first();
-      if (await isVisibleSafe(dirBtn)) {
-        await dirBtn.scrollIntoViewIfNeeded().catch(() => {});
-        await wait(500);
-        await dirBtn.click({ force: true }).catch(() => {});
-        console.log('[map-interaction] Clicked "Directions" / "Đường đi" button!');
-        reportStep('map_interacting', { action: 'Xem chỉ đường trên bản đồ', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        
-        for (let ds = 0; ds < 4; ds++) {
-          if (remainingMs(deadline) <= 40000) break;
-          await moveMouseNaturally();
-          await safeMouseWheel(0, randomInt(-200, 200));
-          await waitWithinBudget(4000 + randomInt(1500, 3000), deadline);
-        }
-        await page.keyboard.press('Escape').catch(() => {});
-        await waitWithinBudget(2000, deadline);
-      }
-    } else if (chosenAction === 'share') {
-      const shareBtn = page.locator('button:has-text("Share"), button:has-text("Chia sẻ"), [aria-label*="Chia sẻ"]').first();
-      if (await isVisibleSafe(shareBtn)) {
-        await shareBtn.click({ force: true }).catch(() => {});
-        reportStep('map_interacting', { action: 'Mở popup Chia sẻ địa điểm', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-        await waitWithinBudget(4000 + randomInt(1000, 2000), deadline);
-        await page.keyboard.press('Escape').catch(() => {});
-        await waitWithinBudget(1500, deadline);
-      }
-    } else if (chosenAction === 'save') {
-      const saveBtn = page.locator('button:has-text("Save"), button:has-text("Lưu"), [aria-label*="Lưu"]').first();
-      if (await isVisibleSafe(saveBtn)) {
-        const box = await saveBtn.boundingBox().catch(() => null);
-        if (box) {
-          await safeMouseMove(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
-          await waitWithinBudget(3500, deadline);
-        }
-      }
-    } else if (chosenAction === 'website_hover') {
-      const webBtn = page.locator('button:has-text("Website"), button:has-text("Trang web"), a:has-text("Website"), a:has-text("Trang web"), [aria-label*="Trang web"]').first();
-      if (await isVisibleSafe(webBtn)) {
-        const box = await webBtn.boundingBox().catch(() => null);
-        if (box) {
-          await safeMouseMove(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
-          await waitWithinBudget(3500, deadline);
-        }
-      }
-    }
-  }
-
-  // 3. Check Services section (Dịch vụ) (30 - 45s)
+  // 2. Check Services section (Dịch vụ) (30 - 45s)
   if (remainingMs(deadline) > 50000) {
-    console.log('[map-interaction] 3. Checking Services (Dịch vụ) section...');
-    reportStep('map_interacting', { action: 'Xem bảng Dịch vụ chăm sóc da mụn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+    console.log('[map-interaction] 2. Checking Services (Dịch vụ) section...');
+    reportStep('map_interacting', { action: 'Xem bảng Dịch vụ chăm sóc da & lấy mụn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
     const servicesRow = page.locator('div:has-text("Services:"), div:has-text("Dịch vụ:"), [aria-label*="Dịch vụ"]').first();
     if (await isVisibleSafe(servicesRow)) {
       await servicesRow.scrollIntoViewIfNeeded().catch(() => {});
@@ -525,9 +322,9 @@ async function interactWithMapProfile(config) {
     }
   }
 
-  // 4. View Photos tab / gallery (Ảnh) (60 - 80s)
+  // 3. View Photos tab / gallery (Ảnh) (60 - 80s)
   if (remainingMs(deadline) > 45000) {
-    console.log('[map-interaction] 4. Checking Photos tab / gallery...');
+    console.log('[map-interaction] 3. Checking Photos tab / gallery...');
     reportStep('map_interacting', { action: 'Xem Album ảnh cơ sở vật chất & liệu trình', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
     
     const photoTabSelectors = [
@@ -558,9 +355,9 @@ async function interactWithMapProfile(config) {
     }
   }
 
-  // 5. View Reviews tab / More Google reviews (Bài đánh giá) (60 - 80s)
+  // 4. View Reviews tab / More Google reviews (Bài đánh giá) (60 - 80s)
   if (remainingMs(deadline) > 30000) {
-    console.log('[map-interaction] 5. Checking Reviews tab & customer reviews...');
+    console.log('[map-interaction] 4. Checking Reviews tab & customer reviews...');
     reportStep('map_interacting', { action: 'Đọc nhận xét & đánh giá 5 sao của khách hàng', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
     
     const reviewTabSelectors = [
@@ -592,20 +389,47 @@ async function interactWithMapProfile(config) {
     }
   }
 
-  // 6. Return to Overview (Tổng quan) and check popular times / opening hours (30s)
-  if (remainingMs(deadline) > 10000) {
+  // 5. Interacting with Profile Action Buttons (Website, Directions, Share, Save) (45 - 60s)
+  if (remainingMs(deadline) > 30000) {
+    console.log('[map-interaction] 5. Interacting with profile action buttons...');
+    const actionChoices = ['website', 'directions', 'share', 'save'];
+    const chosen = actionChoices[Math.floor(Math.random() * actionChoices.length)];
+
+    if (chosen === 'website') {
+      const webBtn = page.locator('button:has-text("Website"), button:has-text("Trang web"), a:has-text("Website"), a:has-text("Trang web"), [aria-label*="Trang web"]').first();
+      if (await isVisibleSafe(webBtn)) {
+        reportStep('map_interacting', { action: 'Bấm nút "Trang web" vào khaihoanderma.com', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+        await webBtn.click({ force: true }).catch(() => {});
+        await waitWithinBudget(6000 + randomInt(2000, 4000), deadline);
+      }
+    } else if (chosen === 'directions') {
+      const dirBtn = page.locator('button:has-text("Directions"), button:has-text("Đường đi"), a:has-text("Directions"), a:has-text("Đường đi"), [data-value*="Directions"], [aria-label*="Đường đi"]').first();
+      if (await isVisibleSafe(dirBtn)) {
+        reportStep('map_interacting', { action: 'Bấm nút "Đường đi" xem tuyến đường', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+        await dirBtn.click({ force: true }).catch(() => {});
+        await waitWithinBudget(5000 + randomInt(2000, 4000), deadline);
+        await page.keyboard.press('Escape').catch(() => {});
+      }
+    } else if (chosen === 'share') {
+      const shareBtn = page.locator('button:has-text("Share"), button:has-text("Chia sẻ"), [aria-label*="Chia sẻ"]').first();
+      if (await isVisibleSafe(shareBtn)) {
+        reportStep('map_interacting', { action: 'Mở popup Chia sẻ địa điểm', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+        await shareBtn.click({ force: true }).catch(() => {});
+        await waitWithinBudget(4000, deadline);
+        await page.keyboard.press('Escape').catch(() => {});
+      }
+    }
+  }
+
+  // 6. Return to Overview and check popular times / opening hours
+  if (remainingMs(deadline) > 5000) {
     console.log('[map-interaction] 6. Returning to Overview tab...');
-    reportStep('map_interacting', { action: 'Xem biểu đồ Giờ đông khách trong ngày', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
-    
     const overviewTab = page.locator('button:has-text("Overview"), button:has-text("Tổng quan"), div[role="tab"]:has-text("Tổng quan")').first();
     if (await isVisibleSafe(overviewTab)) {
       await overviewTab.click({ force: true }).catch(() => {});
       await waitWithinBudget(2000, deadline);
     }
-
     await safeMouseWheel(0, -600);
-    await waitWithinBudget(2500 + randomInt(1000, 2000), deadline);
-    await safeMouseWheel(0, 350);
     await waitWithinBudget(remainingMs(deadline), deadline);
   }
 
@@ -628,13 +452,10 @@ async function main() {
   const keyword = await loadKeyword(config);
   
   await searchGoogle(keyword);
-  const foundResult = await findAndOpenMapProfile(config);
-  const isFound = Boolean(foundResult && (foundResult === true || foundResult.found));
+  const found = await findAndOpenMapProfile(config);
   
-  if (isFound) {
-    if (!foundResult || !foundResult.directCard) {
-      await interactWithMapProfile(config);
-    }
+  if (found) {
+    await interactWithMapProfile(config);
   } else {
     console.warn('[map] Warning: Target Map Profile was not found in search results.');
     reportStep('map_not_found', 'Không tìm thấy Profile Map trong kết quả');
@@ -644,7 +465,7 @@ async function main() {
   const output = {
     keyword,
     targetBusinessName: config.targetBusinessName,
-    found: isFound,
+    found: Boolean(found),
     url: await page.url(),
     title: await page.title(),
     finishedAt: new Date().toISOString(),
