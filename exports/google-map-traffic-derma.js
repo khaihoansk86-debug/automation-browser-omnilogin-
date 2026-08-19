@@ -8,6 +8,44 @@ const DEFAULTS = {
   exportPath: 'C:\\Users\\Admin\\Desktop\\key_derma\\google-map-output.json',
 };
 
+const PHAN_THIET_LOCATIONS = [
+  'Chợ Phan Thiết, Đức Nghĩa, Phan Thiết',
+  'Co.opmart Phan Thiết, Nguyễn Tất Thành',
+  'Lotte Mart Phan Thiết, KĐT Hùng Vương',
+  'Công viên Võ Văn Kiệt, Phú Thủy, Phan Thiết',
+  'Bến xe Phan Thiết, Trần Quý Cáp',
+  'Bệnh viện Đa khoa tỉnh Bình Thuận, Trường Chinh',
+  'Cảng cá Phan Thiết, Đức Thắng',
+  'Trường Dục Thanh, Trưng Nhị, Phan Thiết',
+  'Bãi biển Đồi Dương, Lê Lợi, Phan Thiết',
+  'Đường Trần Hưng Đạo, Phan Thiết',
+  'Đường Thủ Khoa Huân, Phan Thiết',
+  'Đường Nguyễn Tất Thành, Phan Thiết',
+  'Đường Tuyên Quang, Phan Thiết',
+  'Đường Lê Hồng Phong, Phan Thiết',
+  'Đường Hải Thượng Lãn Ông, Phan Thiết',
+  'Đường Mậu Thân, Phan Thiết',
+  'Đường Hùng Vương, Phú Thủy, Phan Thiết',
+  'Đường Tôn Đức Thắng, Phan Thiết',
+  'Đường Nguyễn Thị Minh Khai, Đức Nghĩa',
+  'Đường Võ Thị Sáu, Phan Thiết',
+  'Khu đô thị Hùng Vương, Phan Thiết',
+  'Khu đô thị Bắc Phan Thiết, Xuân An',
+  'Cầu Trần Hưng Đạo, Phan Thiết',
+  'Chợ Phú Thủy, Lê Văn Phấn, Phan Thiết',
+  'Chợ Đồn, Hàm Tiến, Phan Thiết',
+  'UBND Thành phố Phan Thiết, Trần Hưng Đạo',
+  'Bưu điện Phan Thiết, Lê Hồng Phong',
+  'Khách sạn Cà Ty, Phan Thiết',
+  'Novaworld Phan Thiết, Tiến Thành',
+  'Vòng xoay tượng đài Chiến Thắng, Phan Thiết',
+  'Ga Phan Thiết, Phong Nẫm',
+  'Đường Huỳnh Thúc Kháng, Mũi Né',
+  'Tháp Po Sah Inư, Phú Hài, Phan Thiết',
+  'Chợ Lạc Đạo, Phan Thiết',
+  'Chợ Thanh Hải, Phan Thiết',
+];
+
 function param(name) {
   return typeof __params !== 'undefined' && __params ? __params[name] : undefined;
 }
@@ -176,7 +214,6 @@ async function clickTargetPlaceCardStrictly() {
 // Helper: Click STRICTLY inside the opened Khải Hoàn Skincare Drawer
 async function clickInsideKhảiHoànDrawer(targetType) {
   return await page.evaluate((type) => {
-    // 1. Locate the active detail drawer containing Khải Hoàn Skincare
     const containers = Array.from(document.querySelectorAll('div.I6TXqe, div.m6QErb, div.section-layout, div[role="main"], div.x3Eknd, div.B7vV8c, div.kno-ecr-pt'));
     let targetDrawer = null;
     
@@ -189,7 +226,6 @@ async function clickInsideKhảiHoànDrawer(targetType) {
     }
     
     if (!targetDrawer) {
-      // Check document body if title is Khải Hoàn
       const allText = (document.body.innerText || '').toLowerCase();
       if (allText.includes('khải hoàn skincare') || allText.includes('nhà thuốc khải hoàn')) {
         targetDrawer = document.body;
@@ -199,7 +235,6 @@ async function clickInsideKhảiHoànDrawer(targetType) {
     if (!targetDrawer) return { success: false, reason: 'drawer_not_found' };
 
     if (type === 'duong_di') {
-      // Find the specific button with text "Đường đi" inside drawer
       const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
       for (const el of allButtons) {
         const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
@@ -210,7 +245,6 @@ async function clickInsideKhảiHoànDrawer(targetType) {
         }
       }
     } else if (type === 'trang_web') {
-      // Find the specific button with text "Trang web" inside drawer
       const allButtons = Array.from(targetDrawer.querySelectorAll('button, a, div[role="button"], span'));
       for (const el of allButtons) {
         const label = (el.getAttribute('aria-label') || el.innerText || '').trim();
@@ -376,26 +410,55 @@ async function interactWithMapProfile(config) {
   console.log(`[map] Starting comprehensive 4-Stage Profile interaction for ${dwellSeconds}s (~${Math.round(dwellSeconds/60)} mins)...`);
 
   // ==========================================
-  // GIAI ĐOẠN 1: BẤM NÚT "ĐƯỜNG ĐI" TRONG PROFILE KHẢI HOÀN (35 - 50s)
+  // GIAI ĐOẠN 1: BẤM NÚT "ĐƯỜNG ĐI" & NHẬP VỊ TRÍ PHAN THIẾT RANDOM (45 - 60s)
   // ==========================================
   console.log('[map-stage1] Phase 1: Clicking scoped "Đường đi" button inside Khải Hoàn Profile...');
-  reportStep('map_interacting', { action: 'Bấm nút "Đường đi" xem tuyến đường đến Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+  reportStep('map_interacting', { action: 'Bấm nút "Đường đi" đến Khải Hoàn', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
   
   const clickDir = await clickInsideKhảiHoànDrawer('duong_di');
   if (clickDir && clickDir.success) {
     console.log('[map-stage1] Successfully clicked "Đường đi" inside Khải Hoàn drawer!');
     await wait(3000);
 
-    // Pan & view map route to 01 Vạn Thủy Tú
-    for (let ds = 0; ds < 4; ds++) {
+    // Pick unique Phan Thiết starting location per profile
+    const profileIdNum = Number(param('profileId') || 37);
+    const locIndex = Math.abs(profileIdNum - 1) % PHAN_THIET_LOCATIONS.length;
+    const startingPoint = PHAN_THIET_LOCATIONS[locIndex];
+    console.log(`[map-stage1] Profile ${profileIdNum} selected starting location: "${startingPoint}"`);
+    reportStep('map_interacting', { action: `Nhập điểm đi: ${startingPoint.split(',')[0]}`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+
+    // Fill origin input with human typing
+    const originInput = page.locator('div#directions-searchbox-0 input, input[placeholder*="bắt đầu"], input[aria-label*="bắt đầu"], input[placeholder*="Starting point"], input[aria-label*="Starting point"], input.tactile-searchbox-input').first();
+    if (await isVisibleSafe(originInput)) {
+      await originInput.click();
+      await wait(400);
+      await originInput.fill('');
+      for (const char of startingPoint) {
+        await page.keyboard.type(char, { delay: randomInt(35, 75) });
+      }
+      await wait(600);
+      await originInput.press('Enter');
+      await wait(2500 + randomInt(500, 1500));
+
+      const suggestion = page.locator('div[role="listbox"] div[role="option"], ul[role="listbox"] li, div.sbtc').first();
+      if (await isVisibleSafe(suggestion)) {
+        await suggestion.click().catch(() => {});
+      } else {
+        await page.keyboard.press('Enter').catch(() => {});
+      }
+      await wait(3500);
+    }
+
+    // Pan & view calculated map route from starting location to 01 Vạn Thủy Tú
+    for (let ds = 0; ds < 5; ds++) {
       await moveMouseNaturally();
       await safeMouseWheel(0, randomInt(-100, 100));
-      reportStep('map_interacting', { action: 'Xem bản đồ & đường đi đến 01 Vạn Thủy Tú', elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
+      reportStep('map_interacting', { action: `Xem lộ trình từ ${startingPoint.split(',')[0]} đến Khải Hoàn`, elapsed: Math.floor((Date.now() - startMs)/1000), total: dwellSeconds });
       await wait(4000 + randomInt(1500, 3000));
     }
     
     // Close directions / back to Khải Hoàn profile
-    const backBtn = page.locator('button[aria-label*="Quay lại"], button[aria-label*="Back"], button.hYBOP, button[jsaction*="back"]').first();
+    const backBtn = page.locator('button[aria-label*="Quay lại"], button[aria-label*="Back"], button.hYBOP, button[jsaction*="back"], button[aria-label*="Đóng"]').first();
     if (await isVisibleSafe(backBtn)) {
       await backBtn.click({ force: true }).catch(() => {});
     } else {
