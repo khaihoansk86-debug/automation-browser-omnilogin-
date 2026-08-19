@@ -353,15 +353,34 @@ async function findAndOpenMapProfile(config) {
     return true;
   }
 
-  // 2. Click "Doanh nghiệp khác >" (More places) to open full list
-  console.log('[map] Clicking "Doanh nghiệp khác" / "More places" button...');
+  // 2. Scroll down slightly to locate "Các địa điểm khác" / "Doanh nghiệp khác" button
+  console.log('[map] Scrolling down to find "Các địa điểm khác" / "Doanh nghiệp khác" button...');
+  for (let s = 0; s < 3; s++) {
+    await moveMouseNaturally();
+    await safeMouseWheel(0, 260 + randomInt(50, 100));
+    await wait(500);
+  }
+
   const morePlacesSelectors = [
+    'a:has-text("Các địa điểm khác")',
+    'button:has-text("Các địa điểm khác")',
+    'div[role="button"]:has-text("Các địa điểm khác")',
+    'span:has-text("Các địa điểm khác")',
     'a:has-text("Doanh nghiệp khác")',
     'button:has-text("Doanh nghiệp khác")',
     'div[role="button"]:has-text("Doanh nghiệp khác")',
-    'g-more-link a',
-    'a[data-async-trigger*="local"]',
+    'span:has-text("Doanh nghiệp khác")',
+    'a:has-text("Địa điểm khác")',
+    'button:has-text("Địa điểm khác")',
     'a:has-text("Xem thêm địa điểm")',
+    'button:has-text("Xem thêm địa điểm")',
+    'a:has-text("Xem tất cả địa điểm")',
+    'button:has-text("Xem tất cả địa điểm")',
+    'g-more-link a',
+    'g-more-link button',
+    'g-more-link',
+    'a[data-async-trigger*="local"]',
+    'a[data-async-context*="local"]',
     'a:has-text("More businesses")',
     'a:has-text("More places")',
   ];
@@ -382,12 +401,21 @@ async function findAndOpenMapProfile(config) {
   if (!clickedMore) {
     try {
       clickedMore = await page.evaluate(() => {
-        const allLinks = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
+        const allLinks = Array.from(document.querySelectorAll('a, button, div[role="button"], span, g-more-link'));
         for (const el of allLinks) {
-          const t = (el.innerText || '').toLowerCase();
-          if (t.includes('doanh nghiệp khác') || t.includes('xem thêm địa điểm') || t.includes('more businesses') || t.includes('more places')) {
-            if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
-            el.click();
+          const t = (el.innerText || el.getAttribute('aria-label') || '').toLowerCase().trim();
+          if (
+            t.includes('các địa điểm khác') ||
+            t.includes('doanh nghiệp khác') ||
+            t.includes('địa điểm khác') ||
+            t.includes('xem thêm địa điểm') ||
+            t.includes('xem tất cả địa điểm') ||
+            t.includes('more businesses') ||
+            t.includes('more places')
+          ) {
+            const clickable = el.closest('a, button, div[role="button"], g-more-link') || el;
+            if (typeof clickable.scrollIntoView === 'function') clickable.scrollIntoView({ block: 'center' });
+            clickable.click();
             return true;
           }
         }
