@@ -26,6 +26,16 @@ const DEFAULT_APP_ALIASES = [
         appId: 'facebook-traffic-derma',
         name: 'Facebook Referral QA - Khải Hoàn Derma',
     },
+    {
+        alias: 'map',
+        appId: 'google-map-traffic-derma',
+        name: 'Bơm Tương Tác Google Map - Khải Hoàn Skincare',
+    },
+    {
+        alias: 'gmap',
+        appId: 'google-map-traffic-derma',
+        name: 'Bơm Tương Tác Google Map - Khải Hoàn Skincare',
+    },
 ];
 const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
 function loadEnvFile(path = '.env') {
@@ -287,7 +297,9 @@ function pickMktProxyKey(profile, config) {
     if (config.keys.length === 0)
         return undefined;
     const profileNumber = Number(profile.name);
-    const index = Number.isInteger(profileNumber) && profileNumber > 0 ? (profileNumber - 1) % config.keys.length : profile.id % config.keys.length;
+    const index = Number.isInteger(profileNumber) && profileNumber > 0
+        ? (profileNumber - 1) % config.keys.length
+        : profile.id % config.keys.length;
     return config.keys[index];
 }
 async function fetchMktProxy(config, key, preferNew) {
@@ -356,6 +368,127 @@ async function refreshMktProxyForProfile(telegram, chatId, omni, profileId, conf
         `Chế độ: ${code(config.rotateMode)}`,
     ].join('\n'));
 }
+function parseProxyList(rawList, rawChangeUrls) {
+    if (!rawList)
+        return [];
+    const entries = rawList.split(/[\n,;]/).map((s) => s.trim()).filter(Boolean);
+    const changeUrls = (rawChangeUrls || '').split(/[\n,;]/).map((s) => s.trim()).filter(Boolean);
+    return entries
+        .map((entry, index) => {
+        let host = '';
+        let port = 0;
+        let username = '';
+        let password = '';
+        let proxyType = 'HTTP';
+        if (entry.includes('://')) {
+            try {
+                const url = new URL(entry);
+                host = url.hostname;
+                port = parseInt(url.port, 10);
+                username = decodeURIComponent(url.username);
+                password = decodeURIComponent(url.password);
+                if (url.protocol.startsWith('socks'))
+                    proxyType = 'Socks5';
+            }
+            catch { }
+        }
+        else {
+            const parts = entry.split(':');
+            if (parts.length >= 4) {
+                host = parts[0];
+                port = parseInt(parts[1], 10);
+                username = parts[2];
+                password = parts.slice(3).join(':');
+            }
+            else if (parts.length === 2) {
+                host = parts[0];
+                port = parseInt(parts[1], 10);
+            }
+        }
+        return {
+            host,
+            port,
+            username,
+            password,
+            proxyType,
+            changeIpUrl: changeUrls[index] || undefined,
+        };
+    })
+        .filter((p) => p.host && p.port > 0);
+}
+function loadUniversalProxyConfig() {
+    const mktConfig = loadMktProxyConfig();
+    const rawProxyList = process.env.PROXY_LIST?.trim() || '';
+    const rawChangeUrls = process.env.PROXY_CHANGE_IP_URLS?.trim() || '';
+    const parsedProxies = parseProxyList(rawProxyList, rawChangeUrls);
+    const proxyEnabled = parseBoolean(process.env.PROXY_ENABLED, parsedProxies.length > 0 || mktConfig.enabled);
+    return {
+        enabled: proxyEnabled,
+        proxies: parsedProxies,
+        mktConfig,
+    };
+}
+async function setupProxyForProfile(telegram, chatId, omni, profileId, config) {
+    if (!config.enabled)
+        return;
+    const profiles = await loadProfilesByNameOrId(omni);
+    const profile = profiles.find((item) => item.id === profileId);
+    if (!profile)
+        throw new Error(`Không tìm thấy profile ID ${profileId} để cập nhật proxy`);
+    // 1. If custom proxies (e.g. xxproxy) are configured
+    if (config.proxies.length > 0) {
+        const profileNumber = Number(profile.name);
+        const index = Number.isInteger(profileNumber) && profileNumber > 0
+            ? (profileNumber - 1) % config.proxies.length
+            : profile.id % config.proxies.length;
+        const selectedProxy = config.proxies[index];
+        // If changeIpUrl is configured, trigger IP rotation before launching
+        if (selectedProxy.changeIpUrl) {
+            try {
+                console.log(`[proxy] Rotating IP via URL: ${selectedProxy.changeIpUrl}`);
+                await fetch(selectedProxy.changeIpUrl);
+                await delay(2000);
+            }
+            catch (err) {
+                console.log(`[proxy] Warning: changeIpUrl failed:`, err);
+            }
+        }
+        const proxyData = {
+            proxy_type: selectedProxy.proxyType,
+            host: selectedProxy.host,
+            port: selectedProxy.port,
+            user_name: selectedProxy.username || '',
+            password: selectedProxy.password || '',
+        };
+        const detail = await omni.profiles.get(profileId);
+        const currentProxy = detail.proxy;
+        const proxyName = currentProxy?.name || `Proxy-${selectedProxy.port}`;
+        if (currentProxy?.id) {
+            await omni.proxies.update(currentProxy.id, {
+                name: proxyName,
+                ...proxyData,
+            });
+        }
+        else {
+            const created = await omni.proxies.create({
+                name: proxyName,
+                ...proxyData,
+            });
+            await omni.profiles.assignProxy(created.id, [profileId]);
+        }
+        await telegram.sendMessage(chatId, [
+            '<b>🌐 Đã gán Proxy Dân Cư Xoay</b>',
+            `👤 Profile: <b>${escapeHtml(profile.name || String(profileId))}</b> (ID: ${profileId})`,
+            `🔌 Proxy: <code>${selectedProxy.host}:${selectedProxy.port}</code>`,
+            `⚡ Loại: <code>Residential HTTP (XXProxy)</code>`,
+        ].join('\n'));
+        return;
+    }
+    // 2. Fallback to MKTProxy if configured
+    if (config.mktConfig.enabled && config.mktConfig.apiKey) {
+        await refreshMktProxyForProfile(telegram, chatId, omni, profileId, config.mktConfig);
+    }
+}
 async function waitForProfileRunOrCaptcha(telegram, chatId, omni, app, profileId, profileRunSeconds, state, logStartOffset) {
     const deadline = Date.now() + Math.max(0, profileRunSeconds) * 1000;
     const logPath = getAiAppLogPath(app.appId);
@@ -390,6 +523,10 @@ class TelegramClient {
         });
         const payload = (await response.json());
         if (!response.ok || !payload.ok) {
+            if (method !== 'getUpdates' && method !== 'getFile') {
+                console.error(`Telegram API error (${method}):`, payload.description);
+                return {};
+            }
             throw new Error(payload.description || `Telegram API lỗi: ${method}`);
         }
         return payload.result;
@@ -498,17 +635,20 @@ function helpText(defaultAppId) {
         '',
         '<b>2. Hướng dẫn chạy 1 profile</b>',
         `• Đánh giá & Index GSC: ${code('/run app=index profile=37')}`,
+        `• Bơm Google Map: ${code('/run app=map profile=37')}`,
         `• Facebook Referral QA: ${code('/run app=fb profile=37')}`,
         `• Chạy Rank QA: ${code('/run app=derma profile=37')}`,
         `• Nuôi tài khoản: ${code('/run app=nuoi profile=1')}`,
         '',
         '<b>3. Hướng dẫn chạy hàng loạt (hỗ trợ dải profile, ví dụ 37-66)</b>',
+        `• Bơm Google Map dải: ${code('/run app=map profiles=37-66 delay=60-120 close=1')}`,
+        `• Chạy Facebook Referral QA dải: ${code('/run app=fb profiles=37-66 delay=60-120 close=1')}`,
         `• Chạy Đánh giá & Index GSC dải profile: ${code('/run app=index profiles=37-40 delay=60-120 close=1')}`,
         `• Nuôi dải tài khoản: ${code('/run app=nuoi profiles=1-10 delay=60 close=1')}`,
         `• Chạy Rank QA dải: ${code('/run app=derma profiles=37-66 delay=60-180 close=1')}`,
         '',
         '<b>4. Giải thích các tham số chính</b>',
-        `• ${code('app=...')} : Tên kịch bản cần chạy (${code('derma')} / ${code('nuoi')} / ${code('index')} / ${code('fb')})`,
+        `• ${code('app=...')} : Tên kịch bản cần chạy (${code('map')} / ${code('fb')} / ${code('derma')} / ${code('index')} / ${code('nuoi')})`,
         `• ${code('profile=...')} : Tên hoặc ID của 1 profile duy nhất`,
         `• ${code('profiles=...')} : Dải profile (${code('37-66')}, hoặc danh sách ${code('1,2,3')}, hoặc ${code('all')})`,
         `• ${code('delay=...')} : Độ trễ ngẫu nhiên giữa các profile (ví dụ: ${code('60-120')} giây)`,
@@ -530,11 +670,11 @@ function listText(aliases, defaultAppId) {
         ...aliases.map((item) => `${code(item.alias)} → ${code(item.appId)} - ${escapeHtml(item.name)}`),
         '',
         '<b>Lệnh hay dùng</b>',
+        code('/run app=map profiles=37-66 delay=60-90 close=1'),
+        code('/run app=fb profiles=37-66 delay=60-90 close=1'),
+        code('/run app=derma profiles=37-66 delay=60 close=1'),
+        code('/run app=index profile=37 close=1'),
         code('/run app=nuoi profile=1 close=1'),
-        code('/run app=fb profile=37 close=1'),
-        code('/run app=derma profiles=1,2,3 delay=60 close=1'),
-        code('/run app=index profile=37 close=1'),
-        code('/run app=index profile=37 close=1'),
         code('/status'),
         code('/stop'),
         '',
@@ -542,7 +682,7 @@ function listText(aliases, defaultAppId) {
         code(defaultAppId),
     ].join('\n');
 }
-async function runAiAppForProfiles(telegram, chatId, omni, app, profileRefs, delayRange, profileRunSeconds, closeAfterRun, mktProxyConfig, gscSyncConfig, state) {
+async function runAiAppForProfiles(telegram, chatId, omni, app, profileRefs, delayRange, profileRunSeconds, closeAfterRun, proxyConfig, gscSyncConfig, state) {
     state.active = true;
     state.appAlias = app.alias;
     state.appId = app.appId;
@@ -612,7 +752,7 @@ async function runAiAppForProfiles(telegram, chatId, omni, app, profileRefs, del
                 `👤 Đang xử lý: <b>Profile ${profileName}</b> (ID: ${profileId})`,
                 `--------------------------------------------`
             ].join('\n')).catch(() => { });
-            await refreshMktProxyForProfile(telegram, chatId, omni, profileId, mktProxyConfig);
+            await setupProxyForProfile(telegram, chatId, omni, profileId, proxyConfig);
             const aiAppLogOffset = getFileSize(getAiAppLogPath(app.appId));
             const localScriptPath = getLocalAiAppScriptPath(app.appId);
             const hasLocalScript = existsSync(localScriptPath);
@@ -722,10 +862,13 @@ const defaultMenuKeyboard = {
 const defaultInlineKeyboard = {
     inline_keyboard: [
         [
-            { text: '🔗 Chạy Facebook Referral QA (Profile 37)', callback_data: '/run app=fb profile=37' }
+            { text: '🗺️ Bơm Google Map (37-66)', callback_data: '/run app=map profiles=37-66 delay=60-90' }
         ],
         [
-            { text: '🚀 Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
+            { text: '📘 Chạy Facebook Referral QA (37-66)', callback_data: '/run app=fb profiles=37-66 delay=60-90' }
+        ],
+        [
+            { text: '⭐ Chạy Đánh giá & Index GSC (Profile 37)', callback_data: '/run app=index profile=37' }
         ],
         [
             { text: '🌱 Chạy Nuôi Profile (37-66)', callback_data: '/run app=warmup profiles=37-66' },
@@ -756,6 +899,11 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
         statusLines.search = '⚪ Tìm kiếm Fanpage Khải Hoàn Derma';
         statusLines.rank = '⚪ Bốc số bài 1-10 & Theo dõi bộ đếm';
         statusLines.audit = '⚪ Tương tác ở web Derma';
+    }
+    else if (app.appId === 'google-map-traffic-derma') {
+        statusLines.search = '⚪ Mở Google & tìm từ khóa theo file Desktop';
+        statusLines.find = '⚪ Quét & tìm Map Khải Hoàn Skincare';
+        statusLines.interact = '⚪ Tương tác xem ảnh, đánh giá, giờ mở cửa (1.5 - 3p)';
     }
     else {
         statusLines.warmup = '⚪ Tìm kiếm & đọc báo (Warmup)';
@@ -894,7 +1042,10 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                 statusLines.audit = `🔵 Đang tương tác ở web Derma (${elapsed}/${total}s)...`;
             }
             else if (currentStep === 'web_gallery_checked') {
-                statusLines.audit = `🔵 Đã kiểm tra ảnh, tiếp tục đọc trang sản phẩm...`;
+                statusLines.audit = `🔄 Đã kiểm tra ảnh, tiếp tục đọc trang sản phẩm...`;
+            }
+            else if (currentStep === 'web_search') {
+                statusLines.audit = `🔍 ${escapeHtml(detail || 'Đang tìm kiếm trên web Khải Hoàn Derma...')}`;
             }
             else if (currentStep === 'web_related_clicking') {
                 statusLines.audit = `🔵 Đang bấm một sản phẩm tương tự...`;
@@ -918,6 +1069,46 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
                 statusLines.search,
                 statusLines.rank,
                 statusLines.audit,
+                `--------------------------------------------`,
+                `<i>Cập nhật liên tục từ trình duyệt...</i>`
+            ].join('\n');
+        }
+        if (app.appId === 'google-map-traffic-derma') {
+            if (currentStep === 'google_open') {
+                statusLines.search = `🔵 Đang mở Google tìm kiếm...`;
+            }
+            else if (currentStep === 'search_keyword') {
+                statusLines.search = `🟢 Đang tìm từ khóa: <b>${escapeHtml(detail || '')}</b>`;
+                statusLines.find = `🔵 Đang quét danh sách Doanh nghiệp...`;
+            }
+            else if (currentStep === 'map_search' || currentStep === 'map_scanning') {
+                statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+                statusLines.find = `🔵 ${escapeHtml(detail || 'Đang quét danh sách Doanh nghiệp khác...')}`;
+            }
+            else if (currentStep === 'map_found') {
+                statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+                statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
+                statusLines.interact = `🔵 Đang tương tác xem ảnh, đánh giá...`;
+            }
+            else if (currentStep === 'map_interacting') {
+                statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+                statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
+                statusLines.interact = `🔵 ${escapeHtml(detail || 'Đang tương tác sâu với Profile Map...')}`;
+            }
+            else if (currentStep === 'map_done') {
+                statusLines.search = `🟢 Đã tìm kiếm từ khóa Google`;
+                statusLines.find = `🟢 Đã tìm thấy & mở Map Khải Hoàn Skincare`;
+                statusLines.interact = `🟢 Hoàn tất tương tác Google Map`;
+            }
+            else if (currentStep === 'map_not_found') {
+                statusLines.find = `⚠️ Không tìm thấy Profile Map trong kết quả`;
+            }
+            return [
+                `🤖 <b>Log tiến trình: Profile ${profileName}</b> (ID: ${profileId})`,
+                `--------------------------------------------`,
+                statusLines.search,
+                statusLines.find,
+                statusLines.interact,
                 `--------------------------------------------`,
                 `<i>Cập nhật liên tục từ trình duyệt...</i>`
             ].join('\n');
@@ -1013,7 +1204,10 @@ async function runLocalAiAppScript(telegram, chatId, omni, app, profileId, profi
             openAiApiKey: process.env.OPENAI_API_KEY?.trim()
         });
         const elapsedMs = Date.now() - scriptStartedAt;
-        let reportText = `🟢 <b>Kịch bản đã hoàn tất thành công!</b>\nProfile: <b>${profileName}</b> (ID: ${profileId})`;
+        const elapsedMinutes = Math.floor(elapsedMs / 60000);
+        const elapsedSeconds = Math.floor((elapsedMs % 60000) / 1000);
+        const timeStr = `${elapsedMinutes} phút ${elapsedSeconds} giây`;
+        let reportText = `🟢 <b>Kịch bản đã hoàn tất thành công!</b>\nProfile: <b>${profileName}</b> (ID: ${profileId})\n⏳ Thời gian chạy: <b>${timeStr}</b>`;
         if (app.appId === 'khaihoan-derma-rank-qa') {
             const outPath = 'C:\\Users\\Admin\\Desktop\\key_derma\\khaihoan-derma-rank-qa-output.json';
             const output = readJsonFileSafe(outPath);
@@ -1210,7 +1404,7 @@ async function main() {
     const defaultDelaySeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_DELAY_SECONDS, 60) || 60;
     const defaultProfileRunSeconds = parsePositiveInt(process.env.DEFAULT_PROFILE_RUN_SECONDS, 180) || 180;
     const defaultCloseAfterRun = parseBoolean(process.env.CLOSE_PROFILE_AFTER_RUN, true);
-    const mktProxyConfig = loadMktProxyConfig();
+    const proxyConfig = loadUniversalProxyConfig();
     const gscConfig = loadGscConfig();
     const gscSyncConfig = {
         enabled: gscConfig.enabled,
@@ -1262,10 +1456,10 @@ async function main() {
                     continue;
                 }
                 // Map shortcut buttons to commands
-                if (text === '🔗 Chạy Facebook Referral QA (Profile 37)') {
-                    text = '/run app=fb profile=37';
+                if (text === '📘 Chạy Facebook Referral QA (37-66)') {
+                    text = '/run app=fb profiles=37-66 delay=60-90';
                 }
-                else if (text === '🚀 Chạy Đánh giá & Index GSC (Profile 37)') {
+                else if (text === '⭐ Chạy Đánh giá & Index GSC (Profile 37)') {
                     text = '/run app=index profile=37';
                 }
                 else if (text === '🌱 Chạy Nuôi Profile (Profiles 37-66)') {
@@ -1533,19 +1727,12 @@ async function main() {
                     }
                     const resolvedIds = profileResolve.resolved;
                     const profilesToRun = profileResolve.profiles.filter((p) => resolvedIds.includes(p.id));
-                    if (app.appId === 'facebook-traffic-derma' && profilesToRun.length !== 1) {
-                        await telegram.sendMessage(chatId, [
-                            '<b>Facebook Referral QA chỉ chạy một profile mỗi lần</b>',
-                            `Dùng lệnh: ${code('/run app=fb profile=37 close=1')}`,
-                        ].join('\n'));
-                        continue;
-                    }
                     const delayRange = parseDelayRange(args.delay, defaultDelaySeconds);
                     const profileRunSeconds = parsePositiveInt(args.wait || args.runtime || args.runwait, defaultProfileRunSeconds) ||
                         defaultProfileRunSeconds;
                     const closeAfterRun = parseBoolean(args.close || args.closeprofile, defaultCloseAfterRun);
                     state.command = text;
-                    void runAiAppForProfiles(telegram, chatId, omni, app, profilesToRun, delayRange, profileRunSeconds, closeAfterRun, mktProxyConfig, gscSyncConfig, state);
+                    void runAiAppForProfiles(telegram, chatId, omni, app, profilesToRun, delayRange, profileRunSeconds, closeAfterRun, proxyConfig, gscSyncConfig, state);
                     continue;
                 }
                 await telegram.sendMessage(chatId, [
